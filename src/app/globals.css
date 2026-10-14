@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 244 246 250; --card: 255 255 255; --line: 218 224 235; --ink: 20 26 40; --muted: 100 112 135;
+  --accent: 14 148 143; --accent-ink: 255 255 255; --good: 22 140 90; --bad: 200 70 60; --warn: 165 105 25;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: 10 13 20; --card: 26 31 43; --line: 42 49 66; --ink: 234 239 248; --muted: 147 162 194;
+  --accent: 27 194 188; --accent-ink: 7 10 16; --good: 63 193 137; --bad: 224 118 107; --warn: 217 160 80;
+  color-scheme: dark;
+}
+html, body { background: rgb(var(--bg)); color: rgb(var(--ink)); }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+
+@layer components {
+  .card { @apply rounded-xl border border-line bg-card; }
+  .btn { @apply inline-flex min-h-[40px] items-center justify-center gap-1 rounded-lg border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-accent disabled:opacity-50; }
+  .btn-primary { @apply border-accent bg-accent text-accent-ink hover:opacity-90; }
+  .btn-danger { @apply border-bad/50 text-bad hover:border-bad; }
+  .btn-sm { @apply min-h-[32px] px-2 text-xs; }
+  .input { @apply min-h-[40px] w-full rounded-lg border border-line bg-bg px-3 text-base text-ink placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm; }
+  .label { @apply mb-1 block text-xs font-medium text-muted; }
+  .chip { @apply inline-flex items-center rounded-full border border-line px-2 py-0.5 text-xs text-muted; }
+  .h2 { @apply mb-2 text-sm font-semibold uppercase tracking-wide text-muted; }
+}
