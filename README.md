@@ -37,7 +37,7 @@ npm run dev                     # http://localhost:3000
 4. In Supabase: **Authentication → URL Configuration** → set **Site URL** to your Netlify address (`https://….netlify.app`).
 
 The anon/publishable key is visible in the browser by design. Login plus RLS is the protection, not key secrecy.
-(Vercel works too: same two variables.)
+(Vercel works too: same two variables. `vercel.json` pins functions to Dublin, next to a Supabase project in Ireland; change `dub1` if your Supabase region differs.)
 
 ## Rules the app uses
 
