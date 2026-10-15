@@ -13,6 +13,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       client={client} allClients={all.clients}
       deals={all.deals.filter((d) => d.client_id === id)}
       invoices={all.invoices.filter((i) => i.client_id === id)}
+      payments={all.payments}
+      me={all.me}
       tasks={all.tasks.filter((t) => t.client_id === id)}
       activities={all.activities.filter((a) => a.client_id === id)}
     />

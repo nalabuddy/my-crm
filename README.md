@@ -55,20 +55,26 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 ## Tests
 
 ```bash
-npm test                         # unit tests: money, dates, balance, chase, go-quiet, pipeline, filters
+npm test                         # unit tests: money, dates, balance, chase, go-quiet, pipeline, filters, WhatsApp links
 npm run typecheck && npm run build
-
-# Browser tests
-npx playwright test smoke        # no credentials needed: logged-out pages redirect to /login
-E2E_EMAIL=you@example.com E2E_PASSWORD=... npx playwright test flows
-                                 # logged-in flows: add client, add task, part payments, move deal
+npx playwright test smoke        # no database needed: logged-out pages redirect to /login, install files are public
 ```
 
-Run the `flows` tests against a **test** Supabase project. They create and then delete their own client,
-but they do write real rows. If your machine already has Chromium, set `E2E_CHROMIUM=/path/to/chrome`.
+**Logged-in browser tests** (add client, add task, part payments incl. over-payment, edit/delete a payment,
+Chase link, move deal, Overview numbers, "no profile" account turned away) need a Supabase to talk to. Either:
 
-Database security checks (RLS, over-payment trigger) are in `tests/db/security.sql`. They run against any
-Postgres that has the migration applied plus a stub of Supabase's `auth` schema.
+- point them at a **test** Supabase project: `E2E_EMAIL=… E2E_PASSWORD=… npx playwright test` (they write
+  and delete their own rows), or
+- run the **local stack** in `tests/local-stack/` (real Postgres + your migration/seed/RLS + PostgREST + a tiny
+  login stand-in; no accounts or internet needed):
+  `PGRST_BIN=/path/to/postgrest bash tests/local-stack/start.sh`, then run Playwright with
+  `NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=local
+  E2E_EMAIL=michaelvaneck11@gmail.com E2E_PASSWORD=test-pass-michael
+  E2E_STRANGER_EMAIL=stranger@example.com E2E_STRANGER_PASSWORD=test-pass-stranger`.
+
+If your machine already has Chromium, set `E2E_CHROMIUM=/path/to/chrome`.
+
+Database security checks (RLS, over-payment trigger) are in `tests/db/security.sql`.
 
 ## Adding or changing a user
 
