@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/session";
+import { getMe, requireAuth } from "@/lib/session";
 import {
   ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, SOURCES, STAGES, STATUSES,
 } from "@/lib/types";
@@ -16,10 +16,11 @@ const money = z.coerce.number().finite().min(0);
 const uuid = z.string().uuid();
 const optUuid = z.string().uuid().nullable().optional().transform((v) => v || null);
 
-async function run<T>(schema: z.ZodType<T>, input: unknown, fn: (v: T, c: Awaited<ReturnType<typeof requireUser>>) => PromiseLike<{ error: { message: string } | null; id?: string }>): Promise<Result> {
+async function run<T>(schema: z.ZodType<T>, input: unknown, fn: (v: T, c: { supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"] }) => PromiseLike<{ error: { message: string } | null; id?: string }>): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  const ctx = await requireUser();
+  // Authorisation proper is Row Level Security (only profiled users pass); this just needs a valid login.
+  const ctx = await requireAuth();
   const r = await fn(parsed.data, ctx);
   if (r.error) return { error: r.error.message };
   revalidatePath("/", "layout");
@@ -150,7 +151,10 @@ const activitySchema = z.object({
   at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export async function addActivity(input: z.input<typeof activitySchema>): Promise<Result> {
-  return run(activitySchema, input, (v, { supabase, me }) => supabase.from("activities").insert({ ...v, by: me }));
+  return run(activitySchema, input, async (v, { supabase }) => {
+    const me = await getMe();
+    return supabase.from("activities").insert({ ...v, by: me });
+  });
 }
 
 export async function deleteActivity(id: string): Promise<Result> {
