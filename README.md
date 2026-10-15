@@ -1,6 +1,6 @@
 # Next Level Web Solutions CRM
 
-Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth) · Vercel.
+Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth) · Netlify.
 
 - Login required on every page; no public sign-up.
 - Row Level Security on every table: only accounts listed in `profiles` (Michael, Trevor) can read or write.
@@ -28,13 +28,16 @@ npm install
 npm run dev                     # http://localhost:3000
 ```
 
-## 3. Deploy to Vercel
+## 3. Deploy to Netlify
 
-1. [vercel.com](https://vercel.com) → **Add New → Project** → import `nalabuddy/my-crm`.
-2. Under **Environment Variables** add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. **Deploy**.
-3. In Supabase: **Authentication → URL Configuration** → set **Site URL** to your Vercel URL.
+1. [netlify.com](https://netlify.com) → **Add new site → Import an existing project → GitHub** → pick `nalabuddy/my-crm`, branch `main`.
+2. Leave the build settings as detected (Next.js; `netlify.toml` sets Node 22).
+3. Before deploying, open **Site configuration → Environment variables** (or "Add environment variables" on the setup page) and add
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. **Deploy**.
+4. In Supabase: **Authentication → URL Configuration** → set **Site URL** to your Netlify address (`https://….netlify.app`).
 
-The anon key is visible in the browser by design. Login plus RLS is the protection, not key secrecy.
+The anon/publishable key is visible in the browser by design. Login plus RLS is the protection, not key secrecy.
+(Vercel works too: same two variables.)
 
 ## Rules the app uses
 
