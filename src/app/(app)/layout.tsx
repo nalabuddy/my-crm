@@ -1,9 +1,9 @@
 import Shell from "@/components/Shell";
-import { requireUser } from "@/lib/session";
+import { getMe } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { me } = await requireUser();
+  const me = await getMe();
   return <Shell me={me}>{children}</Shell>;
 }
