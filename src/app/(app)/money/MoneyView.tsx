@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
 import { setPromisedDate } from "@/app/actions";
-import { InvoiceModal, PaymentModal } from "@/components/forms";
+import ChaseLinks from "@/components/ChaseLinks";
+import { InvoiceModal, PaymentList, PaymentModal } from "@/components/forms";
 import { Empty, ErrorText, useAct } from "@/components/ui";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
-import type { Client, Invoice } from "@/lib/types";
+import type { Client, Invoice, Payment } from "@/lib/types";
 
-export default function MoneyView({ invoices, clients }: { invoices: Invoice[]; clients: Client[] }) {
+export default function MoneyView({ invoices, clients, payments, me }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string }) {
   const [filter, setFilter] = useState<"outstanding" | "all">("outstanding");
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -53,8 +54,14 @@ export default function MoneyView({ invoices, clients }: { invoices: Invoice[]; 
                     <input type="date" className="input !min-h-[32px] !w-auto !px-2 !py-0 !text-xs" defaultValue={i.promised_date ?? ""} key={i.promised_date ?? "none"}
                       onChange={(e) => act(() => setPromisedDate(i.id, e.target.value || null))} />
                   </label>
-                  {i.balance > 0 && <button className="btn btn-primary btn-sm ml-auto" onClick={() => setPaying(i)}>Record payment</button>}
+                  {i.balance > 0 && (
+                    <span className="ml-auto inline-flex gap-2">
+                      <ChaseLinks invoice={i} client={clients.find((c) => c.id === i.client_id)} me={me} />
+                      <button className="btn btn-primary btn-sm" onClick={() => setPaying(i)}>Record payment</button>
+                    </span>
+                  )}
                 </div>
+                <PaymentList payments={payments.filter((p) => p.invoice_id === i.id)} />
               </li>
             );
           })}

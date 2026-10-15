@@ -3,14 +3,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { deleteActivity } from "@/app/actions";
-import { ActivityForm, ClientModal, DealModal, InvoiceModal, PaymentModal, TaskModal } from "@/components/forms";
+import ChaseLinks from "@/components/ChaseLinks";
+import { ActivityForm, ClientModal, DealModal, InvoiceModal, PaymentList, PaymentModal, TaskModal } from "@/components/forms";
 import { TaskList } from "@/components/TaskList";
 import { Empty, useAct } from "@/components/ui";
 import { fmtDate, fmtRand } from "@/lib/format";
-import type { Activity, Client, Deal, Invoice, Task } from "@/lib/types";
+import type { Activity, Client, Deal, Invoice, Payment, Task } from "@/lib/types";
 
-export default function ClientDetail({ client, allClients, deals, invoices, tasks, activities }: {
-  client: Client; allClients: Client[]; deals: Deal[]; invoices: Invoice[]; tasks: Task[]; activities: Activity[];
+export default function ClientDetail({ client, allClients, deals, invoices, payments, me, tasks, activities }: {
+  client: Client; allClients: Client[]; deals: Deal[]; invoices: Invoice[]; payments: Payment[]; me: string; tasks: Task[]; activities: Activity[];
 }) {
   const router = useRouter();
   const { act } = useAct();
@@ -49,14 +50,18 @@ export default function ClientDetail({ client, allClients, deals, invoices, task
           {invoices.length === 0 ? <Empty>No invoices yet.</Empty> : (
             <ul className="divide-y divide-line">
               {invoices.map((i) => (
-                <li key={i.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <button className="min-w-0 text-left" onClick={() => setEditInv(i)}>
-                    <div className="truncate text-sm">{i.label} <span className="chip ml-1">{i.kind}</span></div>
-                    <div className="text-xs text-muted">{fmtRand(i.amount)} · paid {fmtRand(i.paid)}{i.payment_count > 1 ? ` (${i.payment_count} payments)` : ""}{i.promised_date ? ` · promised ${fmtDate(i.promised_date)}` : ""}</div>
-                  </button>
-                  {i.balance > 0
-                    ? <button className="btn btn-sm shrink-0" onClick={() => setPaying(i)}>{fmtRand(i.balance)} · Pay</button>
-                    : <span className="text-xs font-medium text-good">Paid</span>}
+                <li key={i.id} className="py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <button className="min-w-0 text-left" onClick={() => setEditInv(i)}>
+                      <div className="truncate text-sm">{i.label} <span className="chip ml-1">{i.kind}</span></div>
+                      <div className="text-xs text-muted">{fmtRand(i.amount)} · paid {fmtRand(i.paid)}{i.payment_count > 1 ? ` (${i.payment_count} payments)` : ""}{i.promised_date ? ` · promised ${fmtDate(i.promised_date)}` : ""}</div>
+                    </button>
+                    {i.balance > 0
+                      ? <button className="btn btn-sm shrink-0" onClick={() => setPaying(i)}>{fmtRand(i.balance)} · Pay</button>
+                      : <span className="text-xs font-medium text-good">Paid</span>}
+                  </div>
+                  <ChaseLinks invoice={i} client={client} me={me} className="mt-2" />
+                  <PaymentList payments={payments.filter((p) => p.invoice_id === i.id)} />
                 </li>
               ))}
             </ul>

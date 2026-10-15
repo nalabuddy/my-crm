@@ -13,7 +13,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /smoke/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /smoke|overview/ },
   ],
   webServer: process.env.E2E_BASE_URL ? undefined : { command: "npm run dev", url: "http://localhost:3000/login", reuseExistingServer: true, timeout: 60_000 },
 });

@@ -2,12 +2,12 @@
 import { useState } from "react";
 import {
   addActivity, addClient, addDeal, addInvoice, addTask, deleteClient, deleteDeal, deleteInvoice,
-  deleteTask, recordPayment, updateClient, updateDeal, updateInvoice, updateTask,
+  deleteTask, deletePayment, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
 } from "@/app/actions";
-import { todayISO, fmtRand } from "@/lib/format";
+import { todayISO, fmtDate, fmtRand } from "@/lib/format";
 import {
   ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, SOURCES, STAGES, STATUSES,
-  type Client, type Deal, type Invoice, type Task,
+  type Client, type Deal, type Invoice, type Payment, type Task,
 } from "@/lib/types";
 import { ConfirmButton, ErrorText, Field, Modal, Select, useAct } from "./ui";
 
@@ -170,5 +170,48 @@ export function ActivityForm({ clientId }: { clientId: string }) {
       <ErrorText error={error} />
       <button className="btn btn-primary w-full" disabled={pending}>Log contact</button>
     </form>
+  );
+}
+
+/** Payments received against one invoice, each editable or removable (fixes a mistyped amount or date). */
+export function PaymentList({ payments }: { payments: Payment[] }) {
+  const { act, error } = useAct();
+  const [editing, setEditing] = useState<Payment | null>(null);
+  if (!payments.length) return null;
+  return (
+    <details className="mt-2 text-xs" data-testid="payment-list">
+      <summary className="cursor-pointer text-muted">Payments ({payments.length})</summary>
+      <ul className="mt-1 divide-y divide-line">
+        {payments.map((p) => (
+          <li key={p.id} className="flex items-center justify-between gap-2 py-1.5" data-testid="payment-row">
+            <span>{fmtDate(p.received_on)} · <b className="tabular-nums">{fmtRand(p.amount)}</b></span>
+            <span className="flex gap-1">
+              <button className="btn btn-sm" onClick={() => setEditing(p)}>Edit</button>
+              <ConfirmButton label="Delete" confirm={`Delete this ${fmtRand(p.amount)} payment?`} onConfirm={() => act(() => deletePayment(p.id))} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <ErrorText error={error} />
+      {editing && <PaymentEditModal payment={editing} onClose={() => setEditing(null)} />}
+    </details>
+  );
+}
+
+function PaymentEditModal({ payment, onClose }: { payment: Payment; onClose: () => void }) {
+  const { act, pending, error } = useAct();
+  const [amount, setAmount] = useState(String(payment.amount));
+  const [on, setOn] = useState(payment.received_on);
+  return (
+    <Modal title="Edit payment" onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => updatePayment(payment.id, { amount, received_on: on }), onClose); }}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Received on"><input className="input" required type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
+        </div>
+        <ErrorText error={error} />
+        <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Saving…" : "Save payment"}</button>
+      </form>
+    </Modal>
   );
 }

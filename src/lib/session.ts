@@ -20,9 +20,6 @@ export const requireAuth = cache(async () => {
 export const getMe = cache(async (): Promise<Person> => {
   const { supabase, userId } = await requireAuth();
   const { data: profile } = await supabase.from("profiles").select("name").eq("id", userId).maybeSingle();
-  if (!profile) {
-    await supabase.auth.signOut();
-    redirect("/login?error=not-authorised");
-  }
+  if (!profile) redirect("/auth/not-authorised"); // route handler signs them out (pages cannot clear cookies)
   return profile.name as Person;
 });

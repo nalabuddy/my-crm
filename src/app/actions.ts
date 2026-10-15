@@ -145,6 +145,18 @@ export async function recordPayment(input: { invoice_id: string; amount: number 
   );
 }
 
+const paymentEditSchema = z.object({
+  id: uuid, amount: money.refine((n) => n > 0, "Amount must be more than 0"),
+  received_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export async function updatePayment(id: string, input: { amount: number | string; received_on: string }): Promise<Result> {
+  return run(paymentEditSchema, { ...input, id }, ({ id, ...v }, { supabase }) =>
+    supabase.from("payments").update(v).eq("id", id));
+}
+export async function deletePayment(id: string): Promise<Result> {
+  return run(uuid, id, (v, { supabase }) => supabase.from("payments").delete().eq("id", v));
+}
+
 // ---------- activities ----------
 const activitySchema = z.object({
   client_id: uuid, type: z.enum(ACTIVITY_TYPES), text: z.string().trim().default(""),
