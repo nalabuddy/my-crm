@@ -6,6 +6,7 @@ export const OWNERS = ["Michael", "Trevor", "Both"] as const;
 export const PRIORITIES = ["Normal", "High"] as const;
 export const ACTIVITY_TYPES = ["Call", "WhatsApp", "Email", "Meeting", "Note"] as const;
 export const INVOICE_KINDS = ["Invoice", "Deposit"] as const;
+export const QUOTE_STATUSES = ["Draft", "Sent", "Accepted", "Declined"] as const;
 
 export type Status = (typeof STATUSES)[number];
 export type Source = (typeof SOURCES)[number];
@@ -27,6 +28,11 @@ export type Invoice = {
   id: string; client_id: string; label: string; kind: "Invoice" | "Deposit"; amount: number;
   due: string | null; promised_date: string | null; notes: string; created_at: string;
   paid: number; balance: number; payment_count: number;
+};
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+export type Quote = {
+  id: string; client_id: string; deal_id: string | null; label: string; amount: number; status: QuoteStatus;
+  sent_on: string | null; notes: string; invoiced: boolean; created_at: string;
 };
 export type Payment = { id: string; invoice_id: string; amount: number; received_on: string };
 export type Task = {

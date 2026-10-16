@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { todayISO } from "@/lib/format";
 import { getMe, requireAuth } from "@/lib/session";
 import {
-  ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, SOURCES, STAGES, STATUSES,
+  ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, QUOTE_STATUSES, SOURCES, STAGES, STATUSES,
 } from "@/lib/types";
 
 export type Result = { error?: string; id?: string };
@@ -155,6 +156,50 @@ export async function updatePayment(id: string, input: { amount: number | string
 }
 export async function deletePayment(id: string): Promise<Result> {
   return run(uuid, id, (v, { supabase }) => supabase.from("payments").delete().eq("id", v));
+}
+
+// ---------- quotes ----------
+const quoteSchema = z.object({
+  client_id: uuid, deal_id: optUuid, label: z.string().trim().min(1, "Describe the quote"),
+  amount: money.refine((n) => n > 0, "Amount must be more than 0"),
+  status: z.enum(QUOTE_STATUSES), sent_on: date, notes: z.string().default(""),
+});
+export async function addQuote(input: z.input<typeof quoteSchema>): Promise<Result> {
+  return run(quoteSchema, input, async (v, { supabase }) => {
+    const r = await supabase.from("quotes").insert({ ...v, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) });
+    if (!r.error) await syncDealToQuoteSent(supabase, v.deal_id, v.status);
+    return r;
+  });
+}
+export async function updateQuote(id: string, input: z.input<typeof quoteSchema>): Promise<Result> {
+  return run(quoteSchema.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
+    const r = await supabase.from("quotes").update({ ...v, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) }).eq("id", id);
+    if (!r.error) await syncDealToQuoteSent(supabase, v.deal_id, v.status);
+    return r;
+  });
+}
+export async function setQuoteStatus(id: string, status: string): Promise<Result> {
+  return run(z.object({ id: uuid, status: z.enum(QUOTE_STATUSES) }), { id, status }, async (v, { supabase }) => {
+    const patch = v.status === "Sent" ? { status: v.status, sent_on: todayISO() } : { status: v.status };
+    const r = await supabase.from("quotes").update(patch).eq("id", v.id).select("deal_id").single();
+    if (!r.error) await syncDealToQuoteSent(supabase, r.data?.deal_id ?? null, v.status);
+    return { error: r.error };
+  });
+}
+export async function deleteQuote(id: string): Promise<Result> {
+  return run(uuid, id, (v, { supabase }) => supabase.from("quotes").delete().eq("id", v));
+}
+/** Accepted quote → invoice (or deposit + final invoice) in one atomic database step. */
+export async function convertQuote(id: string, depositPct: number): Promise<Result> {
+  return run(z.object({ id: uuid, pct: z.coerce.number().min(0).max(99) }), { id, pct: depositPct }, async (v, { supabase }) => {
+    const r = await supabase.rpc("convert_quote", { p_quote: v.id, p_deposit_pct: v.pct });
+    return { error: r.error };
+  });
+}
+/** Marking a quote "Sent" moves a linked deal from Lead to "Quote sent" (never backwards). */
+async function syncDealToQuoteSent(supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"], dealId: string | null, status: string) {
+  if (!dealId || status !== "Sent") return;
+  await supabase.from("deals").update({ stage: "Quote sent" }).eq("id", dealId).eq("stage", "Lead");
 }
 
 // ---------- activities ----------

@@ -5,9 +5,12 @@ import ChaseLinks from "@/components/ChaseLinks";
 import { InvoiceModal, PaymentList, PaymentModal } from "@/components/forms";
 import { Empty, ErrorText, useAct } from "@/components/ui";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
-import type { Client, Invoice, Payment } from "@/lib/types";
+import type { Client, Deal, Invoice, Payment, Quote } from "@/lib/types";
+import QuotesPanel from "./QuotesPanel";
+import RevenuePanel from "./RevenuePanel";
 
-export default function MoneyView({ invoices, clients, payments, me }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string }) {
+export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean }) {
+  const [tab, setTab] = useState<"invoices" | "quotes" | "revenue">("invoices");
   const [filter, setFilter] = useState<"outstanding" | "all">("outstanding");
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -18,12 +21,21 @@ export default function MoneyView({ invoices, clients, payments, me }: { invoice
   const shown = invoices.filter((i) => filter === "all" || i.balance > 0);
   const outstanding = invoices.reduce((s, i) => s + Math.max(i.balance, 0), 0);
 
+  const tabs = [["invoices", "Invoices"], ["quotes", "Quotes"], ["revenue", "Revenue"]] as const;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h1 className="text-xl font-bold">Money</h1><p className="text-sm text-muted">Outstanding: <b className="text-ink">{fmtRand(outstanding)}</b></p></div>
-        <button className="btn btn-primary" disabled={!clients.length} onClick={() => setAdding(true)}>+ Invoice / deposit</button>
+        {tab === "invoices" && <button className="btn btn-primary" disabled={!clients.length} onClick={() => setAdding(true)}>+ Invoice / deposit</button>}
       </div>
+      <div className="flex gap-2" role="tablist">
+        {tabs.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? "btn-primary" : ""}`} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+      {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} />}
+      {tab === "revenue" && <RevenuePanel payments={payments} />}
+      {tab === "invoices" && (<>
       <div className="flex gap-2">
         {(["outstanding", "all"] as const).map((f) => (
           <button key={f} aria-pressed={filter === f} className={`btn btn-sm capitalize ${filter === f ? "btn-primary" : ""}`} onClick={() => setFilter(f)}>{f}</button>
@@ -70,6 +82,7 @@ export default function MoneyView({ invoices, clients, payments, me }: { invoice
       {paying && <PaymentModal invoice={paying} clientName={name(paying.client_id)} onClose={() => setPaying(null)} />}
       {editing && <InvoiceModal invoice={editing} clients={clients} onClose={() => setEditing(null)} />}
       {adding && <InvoiceModal clients={clients} onClose={() => setAdding(false)} />}
+      </>)}
     </div>
   );
 }
