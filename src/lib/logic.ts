@@ -1,5 +1,5 @@
 import { daysBetween } from "./format";
-import type { Activity, Client, Deal, Invoice, Task, Person, Stage } from "./types";
+import type { Activity, Client, Deal, Invoice, Payment, Task, Person, Stage } from "./types";
 import { STAGES } from "./types";
 
 export const QUIET_DAYS = 14;
@@ -78,4 +78,22 @@ export function nextStage(s: Stage, dir: 1 | -1): Stage | null {
 
 function sum(xs: number[]): number {
   return Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Money actually received (payments), by calendar month, for the last n months ending with today's month. Newest first. */
+export function monthlyReceived(payments: Payment[], today: string, n = 12): { key: string; label: string; total: number }[] {
+  let y = +today.slice(0, 4), m = +today.slice(5, 7);
+  const out: { key: string; label: string; total: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push({ key: `${y}-${String(m).padStart(2, "0")}`, label: `${MONTHS[m - 1]} ${y}`, total: 0 });
+    if (--m === 0) { m = 12; y--; }
+  }
+  const byKey = new Map(out.map((o) => [o.key, o]));
+  for (const p of payments) {
+    const row = byKey.get(p.received_on.slice(0, 7));
+    if (row) row.total = Math.round((row.total + Number(p.amount)) * 100) / 100;
+  }
+  return out;
 }

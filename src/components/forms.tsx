@@ -2,12 +2,12 @@
 import { useState } from "react";
 import {
   addActivity, addClient, addDeal, addInvoice, addTask, deleteClient, deleteDeal, deleteInvoice,
-  deleteTask, deletePayment, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
+  deleteTask, deletePayment, deleteQuote, addQuote, convertQuote, updateQuote, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
 } from "@/app/actions";
 import { todayISO, fmtDate, fmtRand } from "@/lib/format";
 import {
-  ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, SOURCES, STAGES, STATUSES,
-  type Client, type Deal, type Invoice, type Payment, type Task,
+  ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, QUOTE_STATUSES, SOURCES, STAGES, STATUSES,
+  type Client, type Deal, type Invoice, type Payment, type Quote, type Task,
 } from "@/lib/types";
 import { ConfirmButton, ErrorText, Field, Modal, Select, useAct } from "./ui";
 
@@ -211,6 +211,71 @@ function PaymentEditModal({ payment, onClose }: { payment: Payment; onClose: () 
         </div>
         <ErrorText error={error} />
         <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Saving…" : "Save payment"}</button>
+      </form>
+    </Modal>
+  );
+}
+
+export function QuoteModal({ quote, clients, deals, onClose }: { quote?: Quote; clients: Client[]; deals: Deal[]; onClose: () => void }) {
+  const { act, pending, error } = useAct();
+  const [f, setF] = useState({
+    client_id: quote?.client_id ?? clients[0]?.id ?? "", deal_id: quote?.deal_id ?? "", label: quote?.label ?? "",
+    amount: String(quote?.amount ?? ""), status: quote?.status ?? "Draft", sent_on: quote?.sent_on ?? "", notes: quote?.notes ?? "",
+  });
+  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
+  const clientDeals = deals.filter((d) => d.client_id === f.client_id);
+  const payload = { ...f, amount: Number(f.amount), deal_id: f.deal_id || null, sent_on: f.sent_on || null };
+  return (
+    <Modal title={quote ? "Edit quote" : "Add quote"} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => quote ? updateQuote(quote.id, payload) : addQuote(payload), onClose); }}>
+        <Field label="Client"><select className="input" required value={f.client_id} onChange={(e) => setF((p) => ({ ...p, client_id: e.target.value, deal_id: "" }))}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="What is it for?"><input className="input" required placeholder="e.g. 5-page website" value={f.label} onChange={(e) => set("label", e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Quoted amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={f.amount} onChange={(e) => set("amount", e.target.value)} /></Field>
+          <Field label="Status"><Select value={f.status} options={QUOTE_STATUSES} onChange={(v) => set("status", v)} /></Field>
+          <Field label="Sent on"><input className="input" type="date" value={f.sent_on} onChange={(e) => set("sent_on", e.target.value)} /></Field>
+          <Field label="Linked deal"><select className="input" value={f.deal_id} onChange={(e) => set("deal_id", e.target.value)}><option value="">— none —</option>{clientDeals.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}</select></Field>
+        </div>
+        <Field label="Notes"><textarea className="input py-2" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
+        <ErrorText error={error} />
+        <div className="flex justify-between gap-2">
+          {quote ? <ConfirmButton label="Delete" confirm="Delete this quote?" onConfirm={() => act(() => deleteQuote(quote.id), onClose)} /> : <span />}
+          <button className="btn btn-primary" disabled={pending}>Save</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Turn an accepted quote into one invoice, or a deposit invoice plus a final invoice. */
+export function MakeInvoiceModal({ quote, clientName, onClose }: { quote: Quote; clientName: string; onClose: () => void }) {
+  const { act, pending, error } = useAct();
+  const [choice, setChoice] = useState<"0" | "30" | "50" | "custom">("0");
+  const [custom, setCustom] = useState("40");
+  const pct = choice === "custom" ? Number(custom) : Number(choice);
+  const valid = Number.isFinite(pct) && pct >= 0 && pct <= 99;
+  const dep = valid && pct > 0 ? Math.round(quote.amount * pct) / 100 : 0;
+  return (
+    <Modal title="Make invoice from quote" onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => convertQuote(quote.id, pct), onClose); }}>
+        <p className="text-sm text-muted">{clientName} · {quote.label} · <b className="text-ink">{fmtRand(quote.amount)}</b></p>
+        <fieldset className="space-y-2">
+          <legend className="label">Deposit up front?</legend>
+          {([["0", "No deposit: one invoice"], ["30", "30% deposit"], ["50", "50% deposit"], ["custom", "Other %"]] as const).map(([v, text]) => (
+            <label key={v} className="flex items-center gap-2 text-sm">
+              <input type="radio" name="dep" checked={choice === v} onChange={() => setChoice(v)} className="h-4 w-4 accent-[rgb(var(--accent))]" /> {text}
+            </label>
+          ))}
+          {choice === "custom" && <input className="input !w-28" type="number" min="1" max="99" aria-label="Deposit percent" value={custom} onChange={(e) => setCustom(e.target.value)} />}
+        </fieldset>
+        <p className="rounded-lg border border-line p-3 text-sm" data-testid="invoice-preview">
+          {!valid ? "Enter a deposit between 1 and 99." : dep > 0
+            ? <>Creates a <b>deposit of {fmtRand(dep)}</b> and a <b>final invoice of {fmtRand(quote.amount - dep)}</b>.</>
+            : <>Creates <b>one invoice of {fmtRand(quote.amount)}</b>.</>}
+          {quote.deal_id && " The linked deal moves forward in the pipeline."}
+        </p>
+        <ErrorText error={error} />
+        <button className="btn btn-primary w-full" disabled={pending || !valid}>{pending ? "Creating…" : "Create invoice"}</button>
       </form>
     </Modal>
   );

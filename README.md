@@ -14,10 +14,12 @@ Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwi
    - `michaelvaneck11@gmail.com` + a strong password
    - `ryantrevor72@gmail.com` + a strong password
 4. **SQL Editor → New query**: paste all of `supabase/migrations/0001_init.sql` → **Run**.
-5. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
+5. **SQL Editor → New query**: paste all of `supabase/migrations/0002_quotes.sql` → **Run** (quotes + the "make invoice" function).
+   Run this **before** deploying a version that has the Quotes tab; until then the tab shows a "not switched on yet" notice.
+6. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
    This links the two logins to *Michael* / *Trevor* (this is what grants access) and loads the starter data
    (Mohammed, R10 500 invoice, R15 000 deposit, "Intranet" deal, six tasks). Safe to re-run.
-6. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
+7. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
    Do **not** use the `service_role` key anywhere in this app.
 
 ## 2. Run locally
@@ -51,6 +53,8 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 | Go quiet | Lead/Active clients whose last logged contact is 14+ days ago (or created 14+ days ago with none) |
 | Mine | the logged-in user; tasks assigned to "Both" show for each person |
 | Over-payment | rejected by a database trigger, not just the form |
+| Quote → invoice | Money → Quotes → "Make invoice": one invoice, or deposit % + final invoice, created atomically (`convert_quote`); a linked deal moves forward, never back |
+| Revenue | money actually **received** (payments), by the month of the received date, last 12 months |
 
 ## Tests
 
@@ -74,7 +78,7 @@ Chase link, move deal, Overview numbers, "no profile" account turned away) need 
 
 If your machine already has Chromium, set `E2E_CHROMIUM=/path/to/chrome`.
 
-Database security checks (RLS, over-payment trigger) are in `tests/db/security.sql`.
+Database security checks are in `tests/db/` (`security.sql`: RLS + over-payment trigger; `quotes.sql`: quote conversion, deposit split, refusals, strangers).
 
 ## Adding or changing a user
 
