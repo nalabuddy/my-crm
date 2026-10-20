@@ -21,6 +21,7 @@ const tone: Record<LeadOutcome, string> = {
   "Meeting booked": "text-good", Interested: "text-good", "Not interested": "text-bad",
 };
 type Filter = "todo" | "callbacks" | "done" | "all";
+const PAGE = 40;
 
 function addDays(iso: string, n: number) {
   const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
@@ -45,6 +46,10 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
   const today = todayISO();
   const [filter, setFilter] = useState<Filter>("todo");
   const [q, setQ] = useState("");
+  const [who, setWho] = useState("");
+  const [niche, setNiche] = useState("");
+  const [tier, setTier] = useState("");
+  const [limit, setLimit] = useState(PAGE);
   const [pasting, setPasting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<CallLead | null>(null);
@@ -65,9 +70,18 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
   const isTodo = (l: CallLead) => l.outcome === "Not called" || l.outcome === "No answer" || dueCallback(l);
   const isDone = (l: CallLead) => ["Meeting booked", "Interested", "Not interested"].includes(l.outcome);
   const term = q.trim().toLowerCase();
-  const shown = sortLeads(leads, today)
+  const sorted = sortLeads(leads, today);
+  const shownAll = sorted
     .filter((l) => filter === "all" ? true : filter === "todo" ? isTodo(l) : filter === "done" ? isDone(l) : l.outcome === "Call back later")
-    .filter((l) => !term || [l.business, l.contact, l.phone].some((x) => x.toLowerCase().includes(term)));
+    .filter((l) => !who || l.assigned_to === who)
+    .filter((l) => !niche || l.niche === niche)
+    .filter((l) => !tier || l.tier === tier)
+    .filter((l) => !term || [l.business, l.contact, l.phone, l.city, l.niche, l.notes, l.lead_code, l.assigned_to].some((x) => (x ?? "").toLowerCase().includes(term)));
+  const shown = shownAll.slice(0, limit);
+  const options = (pick: (l: CallLead) => string | undefined) => [...new Set(leads.map((l) => pick(l) ?? "").filter(Boolean))].sort();
+  const people = options((l) => l.assigned_to), niches = options((l) => l.niche);
+  const hasTiers = leads.some((l) => l.tier);
+  const resetPage = () => setLimit(PAGE);
 
   const counts = {
     todo: leads.filter(isTodo).length,
@@ -97,13 +111,21 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
       <ErrorText error={error} />
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input className="input" type="search" aria-label="Search the call list" placeholder="Search business, contact, number…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input" type="search" aria-label="Search the call list" placeholder="Search business, city, number, notes…" value={q} onChange={(e) => { setQ(e.target.value); resetPage(); }} />
         <div className="flex flex-wrap gap-2">
           {FILTERS.map(([f, label]) => (
-            <button key={f} aria-pressed={filter === f} className={`btn btn-sm ${filter === f ? "btn-primary" : ""}`} onClick={() => setFilter(f)}>{label}</button>
+            <button key={f} aria-pressed={filter === f} className={`btn btn-sm ${filter === f ? "btn-primary" : ""}`} onClick={() => { setFilter(f); resetPage(); }}>{label}</button>
           ))}
         </div>
       </div>
+      {(people.length > 0 || niches.length > 0 || hasTiers) && (
+        <div className="grid grid-cols-3 gap-2" aria-label="Filters">
+          {people.length > 0 && <select className="input" aria-label="Allocated to" value={who} onChange={(e) => { setWho(e.target.value); resetPage(); }}><option value="">Everyone</option>{people.map((p) => <option key={p}>{p}</option>)}</select>}
+          {niches.length > 0 && <select className="input" aria-label="Niche" value={niche} onChange={(e) => { setNiche(e.target.value); resetPage(); }}><option value="">All niches</option>{niches.map((p) => <option key={p}>{p}</option>)}</select>}
+          {hasTiers && <select className="input" aria-label="Tier" value={tier} onChange={(e) => { setTier(e.target.value); resetPage(); }}><option value="">All tiers</option>{["A", "B", "C"].map((t) => <option key={t} value={t}>Tier {t}</option>)}</select>}
+        </div>
+      )}
+      {shownAll.length > 0 && <p className="text-xs text-muted" data-testid="showing">Showing {shown.length} of {shownAll.length}</p>}
 
       {shown.length === 0 ? (
         <div className="card px-4"><Empty>{leads.length === 0 ? "Your call list is empty. Tap “Paste list” to add your numbers." : filter === "todo" ? "Nobody left to call. 🎉" : "Nothing here."}</Empty></div>
@@ -121,9 +143,17 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
                   {l.outcome === "Call back later" && l.callback_on && <div className={dueCallback(l) ? "font-medium text-bad" : "text-muted"}>{fmtDate(l.callback_on)}</div>}
                 </div>
               </div>
+              {(l.tier || l.niche || l.city || l.assigned_to) && (
+                <div className="mt-1 flex flex-wrap gap-1.5" data-testid="lead-chips">
+                  {l.tier && <span className="chip">Tier {l.tier}</span>}
+                  {l.niche && <span className="chip">{l.niche}</span>}
+                  {l.city && <span className="chip">{l.city}</span>}
+                  {l.assigned_to && <span className="chip">→ {l.assigned_to}</span>}
+                </div>
+              )}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 {l.phone ? <a className="text-accent" href={`tel:${l.phone.replace(/[^\d+]/g, "")}`}>{l.phone}</a> : <span className="text-muted">No number</span>}
-                {l.attempts > 0 && <span className="text-xs text-muted">Called {l.attempts}× · last {fmtDate(l.last_called_on)}{l.called_by ? ` by ${l.called_by}` : ""}</span>}
+                {l.attempts > 0 && <span className="text-xs text-muted">Called {l.attempts}×{l.last_called_on ? ` · last ${fmtDate(l.last_called_on)}` : ""}{l.called_by ? ` by ${l.called_by}` : ""}</span>}
               </div>
               {l.notes && <p className="mt-1 whitespace-pre-wrap text-xs text-muted">{l.notes}</p>}
 
@@ -148,6 +178,10 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
             </li>
           ))}
         </ul>
+      )}
+
+      {shownAll.length > shown.length && (
+        <button className="btn w-full" data-testid="show-more" onClick={() => setLimit((n) => n + PAGE)}>Show {Math.min(PAGE, shownAll.length - shown.length)} more ({shownAll.length - shown.length} left)</button>
       )}
 
       {pasting && <PasteLeadsModal onClose={() => setPasting(false)} onDone={(i) => setNotice(i ?? null)} />}

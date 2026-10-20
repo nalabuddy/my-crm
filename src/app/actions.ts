@@ -240,13 +240,21 @@ export async function setMonthlyTarget(amount: number | string): Promise<Result>
 }
 
 // ---------- cold call list ----------
+const TIERS = z.enum(["", "A", "B", "C"]);
 const leadFields = z.object({
   business: z.string().trim().min(1, "Business name is required"),
   contact: z.string().trim().default(""), phone: z.string().trim().default(""), notes: z.string().default(""),
+  assigned_to: z.string().trim().default(""), niche: z.string().trim().default(""),
+  tier: TIERS.default(""), city: z.string().trim().default(""), lead_code: z.string().trim().default(""),
 });
-/** Bulk add (paste). Skips phone numbers already on the list, and repeats within the paste. */
-export async function addLeads(list: z.input<typeof leadFields>[]): Promise<Result> {
-  return run(z.array(leadFields).min(1, "Nothing to add").max(1000, "Paste at most 1000 at a time"), list, async (rows, { supabase }) => {
+const importFields = leadFields.extend({ outcome: z.enum(LEAD_OUTCOMES).default("Not called"), attempts: z.coerce.number().int().min(0).max(50).default(0) });
+const NEEDS_0004 = "The call list needs one more database update. Run supabase/migrations/0004_lead_columns.sql in Supabase, then try again.";
+const missingColumn = (m: string) => /column|schema cache/i.test(m) && /call_leads|assigned_to|niche|tier|city|lead_code/i.test(m);
+
+/** Bulk add (paste, up to 3000 at a time). Skips phone numbers already on the list and repeats within the paste.
+ *  Keeps the order you pasted. All-or-nothing: if any part fails, nothing is left behind. */
+export async function addLeads(list: z.input<typeof importFields>[]): Promise<Result> {
+  return run(z.array(importFields).min(1, "Nothing to add").max(3000, "Paste at most 3000 at a time"), list, async (rows, { supabase }) => {
     const existing = await supabase.from("call_leads").select("phone");
     if (existing.error) return { error: existing.error };
     const seen = new Set((existing.data ?? []).map((r) => phoneKey(r.phone)).filter(Boolean));
@@ -257,17 +265,33 @@ export async function addLeads(list: z.input<typeof leadFields>[]): Promise<Resu
       seen.add(k);
       return true;
     });
-    if (fresh.length) {
-      const ins = await supabase.from("call_leads").insert(fresh);
-      if (ins.error) return { error: ins.error };
+    const base = Date.now();
+    // Every row in one insert must carry the same fields (the database fills a missing field with "nothing", not its default).
+    // The sheet columns are only sent when something uses them, so plain pastes work even before migration 0004.
+    const usesSheetColumns = fresh.some((r) => r.assigned_to || r.niche || r.tier || r.city || r.lead_code);
+    const records = fresh.map(({ assigned_to, niche, tier, city, lead_code, outcome, attempts, ...rest }, i) => ({
+      ...rest, outcome, attempts,
+      ...(usesSheetColumns && { assigned_to, niche, tier, city, lead_code }),
+      created_at: new Date(base + i).toISOString(), // keeps the pasted order
+    }));
+    const doneIds: string[] = [];
+    for (let i = 0; i < records.length; i += 500) {
+      const ins = await supabase.from("call_leads").insert(records.slice(i, i + 500)).select("id");
+      if (ins.error) {
+        if (doneIds.length) await supabase.from("call_leads").delete().in("id", doneIds);
+        return { error: { message: missingColumn(ins.error.message) ? NEEDS_0004 : ins.error.message } };
+      }
+      doneIds.push(...(ins.data ?? []).map((r) => r.id));
     }
     const skipped = rows.length - fresh.length;
     return { error: null, info: `Added ${fresh.length}${skipped ? `, skipped ${skipped} already on the list` : ""}.` };
   });
 }
 export async function updateLead(id: string, input: z.input<typeof leadFields>): Promise<Result> {
-  return run(leadFields.extend({ id: uuid }), { ...input, id }, ({ id, ...v }, { supabase }) =>
-    supabase.from("call_leads").update(v).eq("id", id));
+  return run(leadFields.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
+    const r = await supabase.from("call_leads").update(v).eq("id", id);
+    return r.error && missingColumn(r.error.message) ? { error: { message: NEEDS_0004 } } : r;
+  });
 }
 export async function deleteLead(id: string): Promise<Result> {
   return run(uuid, id, (v, { supabase }) => supabase.from("call_leads").delete().eq("id", v));
