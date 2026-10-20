@@ -1,6 +1,6 @@
 import { daysBetween } from "./format";
 import { waNumber } from "./chase";
-import type { Activity, CallLead, Client, Deal, Expense, Invoice, Payment, Task, Person, Stage } from "./types";
+import type { Activity, CallLead, Client, Deal, Expense, Invoice, LeadOutcome, Payment, Task, Person, Stage } from "./types";
 import { STAGES } from "./types";
 
 export const QUIET_DAYS = 14;
@@ -132,18 +132,77 @@ export function chartData(o: {
 }
 
 // ---------- cold call list ----------
-export type ParsedLead = { business: string; contact: string; phone: string; notes: string };
+export type ParsedLead = {
+  business: string; contact: string; phone: string; notes: string;
+  assigned_to?: string; niche?: string; tier?: "" | "A" | "B" | "C"; city?: string; lead_code?: string;
+  outcome?: LeadOutcome; attempts?: number;
+};
 const PHONE_PART = /^\+?[\d\s().-]{8,}$/;
 const TRAILING_PHONE = /^(.*\S)[\s,:-]+(\+?\d[\d\s().-]{7,}\d)$/;
 
-/** Paste friendly: one business per line; separate with comma / tab / semicolon / | / " - ". The phone number can be anywhere. */
+// Columns of the lead sheet, in the order they appear when nothing says otherwise.
+const SHEET_KEYS = ["lead id", "assigned", "niche", "tier", "business", "category", "phone", "city", "reviews", "unclaimed", "also listed", "status"] as const;
+type SheetKey = (typeof SHEET_KEYS)[number];
+
+/** Map the sheet's "Call Status (live)" onto the call results the app knows. */
+export function mapSheetStatus(raw: string): { outcome: LeadOutcome; attempts: number; note: string } {
+  const t = raw.trim().toLowerCase();
+  if (!t || /^(not called|not yet called|new|none)$/.test(t)) return { outcome: "Not called", attempts: 0, note: "" };
+  if (/do not call|dnc|don'?t call/.test(t)) return { outcome: "Not interested", attempts: 1, note: "DO NOT CALL" };
+  if (/no answer|voicemail|unanswered/.test(t)) return { outcome: "No answer", attempts: 1, note: "" };
+  if (/call ?back|later/.test(t)) return { outcome: "Call back later", attempts: 1, note: "" };
+  if (/meeting|booked|appointment/.test(t)) return { outcome: "Meeting booked", attempts: 1, note: "" };
+  if (/not interested|declin|wrong number/.test(t)) return { outcome: "Not interested", attempts: 1, note: "" };
+  if (/interested|quote|hot|warm/.test(t)) return { outcome: "Interested", attempts: 1, note: "" };
+  return { outcome: "Not called", attempts: 0, note: `Status in sheet: ${raw.trim()}` };
+}
+
+/**
+ * Paste friendly. Two kinds of input:
+ *  1. Rows copied straight from the lead sheet (tab separated, 8+ columns, header row optional):
+ *     business, phone, assigned to, niche, tier, city, lead id and call status are all picked up;
+ *     category, reviews, "Google profile unclaimed" and "also listed as" go into the notes.
+ *  2. Simple lines, one business each; separate with comma / tab / semicolon / | / " - ". The phone can be anywhere.
+ */
 export function parseCallList(text: string): ParsedLead[] {
   const out: ParsedLead[] = [];
+  let cols: Partial<Record<SheetKey, number>> | null = null;
   for (const raw of text.split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+
+    const cells = raw.split("\t");
+    if (cells.length >= 8) {
+      const lower = cells.map((c) => c.trim().toLowerCase());
+      if (lower.includes("business name") || lower.includes("lead id")) { // header row: find each column by its title
+        cols = {};
+        for (const k of SHEET_KEYS) { const i = lower.findIndex((c) => c.includes(k)); if (i >= 0) cols[k] = i; }
+        continue;
+      }
+      const at = cols ?? Object.fromEntries(SHEET_KEYS.map((k, i) => [k, i]));
+      const cell = (k: SheetKey) => (at[k] === undefined ? "" : (cells[at[k]!] ?? "").trim());
+      const business = cell("business");
+      if (!business) continue;
+      const tierRaw = cell("tier").toUpperCase();
+      const st = mapSheetStatus(cell("status"));
+      const reviews = cell("reviews");
+      const notes = [
+        cell("category"),
+        reviews !== "" ? `${reviews} Google reviews` : "",
+        /^yes$/i.test(cell("unclaimed")) ? "Google profile unclaimed" : "",
+        cell("also listed") ? `Also listed as: ${cell("also listed")}` : "",
+        st.note,
+      ].filter(Boolean).join(" · ");
+      out.push({
+        business, contact: "", phone: cell("phone"), notes,
+        assigned_to: cell("assigned"), niche: cell("niche"), tier: tierRaw === "A" || tierRaw === "B" || tierRaw === "C" ? tierRaw : "",
+        city: cell("city"), lead_code: cell("lead id"), outcome: st.outcome, attempts: st.attempts,
+      });
+      continue;
+    }
+
     const line = raw.trim();
-    if (!line) continue;
     if (/^(business|company|name)\b.*\b(phone|number|tel|cell)/i.test(line)) continue; // header row
-    let parts = line.split(/\t|;|\||,|\s[-–—]\s/).map((x) => x.trim()).filter(Boolean);
+    const parts = line.split(/\t|;|\||,|\s[-–—]\s/).map((x) => x.trim()).filter(Boolean);
     let phone = "";
     const rest: string[] = [];
     for (const p of parts) {
@@ -163,12 +222,13 @@ export function parseCallList(text: string): ParsedLead[] {
 /** Digits-only key used to spot the same number twice. */
 export const phoneKey = (phone: string) => waNumber(phone) ?? "";
 
-/** Sort: callbacks due first, then not yet called, then no-answers (oldest attempt first), then everything finished. */
+/** Sort: callbacks due first, then not yet called, then no-answers, then everything finished; Tier A before B before C; then sheet order. */
 export function sortLeads(leads: CallLead[], today: string): CallLead[] {
   const rank = (l: CallLead) =>
     l.outcome === "Call back later" && l.callback_on && l.callback_on <= today ? 0
     : l.outcome === "Not called" ? 1
     : l.outcome === "No answer" ? 2
     : l.outcome === "Call back later" ? 3 : 4;
-  return [...leads].sort((a, b) => rank(a) - rank(b) || (a.last_called_on ?? "").localeCompare(b.last_called_on ?? "") || a.created_at.localeCompare(b.created_at));
+  const tier = (l: CallLead) => ({ A: 0, B: 1, C: 2 } as Record<string, number>)[l.tier ?? ""] ?? 3;
+  return [...leads].sort((a, b) => rank(a) - rank(b) || tier(a) - tier(b) || (a.last_called_on ?? "").localeCompare(b.last_called_on ?? "") || a.created_at.localeCompare(b.created_at));
 }

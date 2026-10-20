@@ -2,7 +2,10 @@
 const nextConfig = {
   devIndicators: false, // the dev-mode "N" badge covers buttons on phone-sized test runs; no effect in production
   // Reopen pages you just visited instantly from the browser cache (30s). Any save clears it.
-  experimental: { staleTimes: { dynamic: 30, static: 180 } },
+  experimental: {
+    staleTimes: { dynamic: 30, static: 180 },
+    serverActions: { bodySizeLimit: "5mb" }, // pasting a ~1000-row lead sheet
+  },
   headers: async () => [
     { source: "/:path*", headers: [
       { key: "X-Frame-Options", value: "DENY" },

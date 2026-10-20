@@ -49,5 +49,7 @@ export type CallLead = {
   id: string; business: string; contact: string; phone: string; notes: string; outcome: LeadOutcome;
   callback_on: string | null; attempts: number; last_called_on: string | null; called_by: Person | null;
   client_id: string | null; created_at: string;
+  // from a lead sheet (migration 0004); absent/empty on hand-added leads
+  assigned_to?: string; niche?: string; tier?: "" | "A" | "B" | "C"; city?: string; lead_code?: string;
 };
 export type Expense = { id: string; spent_on: string; amount: number; category: string; note: string };

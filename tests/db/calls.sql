@@ -35,3 +35,14 @@ insert into expenses (amount) values (5);
 rollback;
 \echo '--- anonymous denied'
 begin; set local role anon; select count(*) from call_leads; rollback;
+
+-- migration 0004: lead sheet columns
+\echo '--- 0004: sheet columns store and default; tier only A/B/C/blank (bad tier must FAIL)'
+select id as m4 from auth.users where email='michaelvaneck11@gmail.com' \gset
+begin; set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'m4', 'role', 'authenticated')::text, true) \gset
+insert into call_leads (business, assigned_to, niche, tier, city, lead_code) values ('Sheet Co', 'Dom', 'Legal', 'A', 'Knysna', 'L-001');
+insert into call_leads (business) values ('Plain Co');
+select business, assigned_to, niche, tier, city, lead_code from call_leads where business in ('Sheet Co','Plain Co') order by business desc;
+savepoint z; insert into call_leads (business, tier) values ('Bad Tier', 'Z'); rollback to z;
+rollback;

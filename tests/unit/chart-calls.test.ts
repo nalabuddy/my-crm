@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartData, parseCallList, sortLeads } from "@/lib/logic";
+import { chartData, mapSheetStatus, parseCallList, sortLeads } from "@/lib/logic";
 import type { CallLead, Deal, Expense, Payment } from "@/lib/types";
 
 const TODAY = "2026-10-14";
@@ -86,5 +86,74 @@ describe("sortLeads", () => {
       lead("due", "Call back later", { callback_on: "2026-10-13" }),
     ], TODAY).map((l) => l.id);
     expect(sorted).toEqual(["due", "fresh", "noans", "future", "done"]);
+  });
+});
+
+// Rows exactly as Google Sheets puts them on the clipboard (tab separated). Taken from the real lead sheet.
+const T = "\t";
+const HEADER = ["Lead ID", "Assigned To", "Niche", "Tier", "Business Name", "Category", "Phone", "City", "Reviews", "Unclaimed GBP", "Also Listed As (same phone)", "Call Status (live)"].join(T);
+const ROWS = [
+  ["L-001", "Dom", "Legal", "A", "Balt Attorneys", "Attorney", "+27 44 382 3111", "Knysna", "62", "No", "Deon Boshoff Attorney", "Not Called"],
+  ["L-004", "Dom", "Legal", "B", "Zolile Ngqeza Attorneys", "Attorney", "+27 41 487 2178", "Gqeberha", "30", "Yes", "", "Not Called"],
+  ["L-094", "Dom", "Legal", "C", "Boyens Attorneys Incorporated - Labour Law Practitioners", "Attorney", "+27 41 205 0968", "Gqeberha", "3", "No", "", "Not Called"],
+  ["A-034", "Dom", "Accounting", "C", "Trust Accounting Agency", "", "+27 34 312 2800", "Newcastle", "3", "Yes", "", "Not Called"],
+  ["A-106", "Dom", "Accounting", "C", "T&M Accounting", "Accounting firm", "+27 71303930", "Vredenburg", "0", "Yes", "", "Not Called"],
+  ["S-006", "Dom", "Solar & Electrical", "A", "CJ Electrical & Solar", "Electrician", "+27 72 348 8289", "", "55", "No", "", "Not Called"],
+  ["L-002", "Obi", "Legal", "B", "Schoeman En Hamman Prokureurs", "Attorney", "+27 22 715 1727", "Vredenburg", "49", "Yes", "", "Not Called"],
+  ["L-180", "Tyler", "Legal", "C", "Tarryn Gravenor Attorney, Conveyancer & Notary +27(0)84 904 1015", "Attorney", "+27 84 904 1015", "St Helena Bay", "0", "No", "", "Not Called"],
+  ["L-072", "Tyler", "Legal", "C", "Selvie Pillay & Co", "Attorney", "+27 32 551 5889", "KwaDukuza", "4", "Yes", "", "Do Not Call"],
+  ["P-112", "Tyler", "Plumbing & Building", "C", "Bt Plumbers and Civils", "Construction company", "+27 73 100 4004", "Gqeberha", "1", "No", "", "No Answer"],
+].map((r) => r.join(T));
+
+describe("parseCallList: lead sheet rows", () => {
+  it("reads the sheet columns (with the header row) into the right fields", () => {
+    const r = parseCallList([HEADER, ...ROWS].join("\n"));
+    expect(r).toHaveLength(10);
+    expect(r[0]).toEqual({
+      business: "Balt Attorneys", contact: "", phone: "+27 44 382 3111",
+      notes: "Attorney · 62 Google reviews · Also listed as: Deon Boshoff Attorney",
+      assigned_to: "Dom", niche: "Legal", tier: "A", city: "Knysna", lead_code: "L-001", outcome: "Not called", attempts: 0,
+    });
+    expect(r[1].notes).toBe("Attorney · 30 Google reviews · Google profile unclaimed"); // unclaimed profile is a selling point
+    expect(r[6]).toMatchObject({ business: "Schoeman En Hamman Prokureurs", assigned_to: "Obi", tier: "B", city: "Vredenburg" });
+  });
+  it("works without the header row too", () => {
+    expect(parseCallList(ROWS.join("\n"))).toHaveLength(10);
+  });
+  it("keeps awkward names whole (commas, dashes, an embedded phone number)", () => {
+    const r = parseCallList(ROWS.join("\n"));
+    expect(r[2].business).toBe("Boyens Attorneys Incorporated - Labour Law Practitioners");
+    expect(r[7].business).toBe("Tarryn Gravenor Attorney, Conveyancer & Notary +27(0)84 904 1015");
+    expect(r[7].phone).toBe("+27 84 904 1015");
+  });
+  it("handles empty cells (no category, no city) and short phone numbers", () => {
+    const r = parseCallList(ROWS.join("\n"));
+    expect(r[3]).toMatchObject({ business: "Trust Accounting Agency", city: "Newcastle", notes: "3 Google reviews · Google profile unclaimed" });
+    expect(r[5]).toMatchObject({ business: "CJ Electrical & Solar", city: "", niche: "Solar & Electrical", tier: "A" });
+    expect(r[4].phone).toBe("+27 71303930");
+  });
+  it("turns the sheet's call status into the app's results", () => {
+    const r = parseCallList(ROWS.join("\n"));
+    expect(r[8]).toMatchObject({ outcome: "Not interested", attempts: 1 });
+    expect(r[8].notes).toContain("DO NOT CALL");
+    expect(r[9]).toMatchObject({ outcome: "No answer", attempts: 1 });
+    expect(mapSheetStatus("Meeting Booked").outcome).toBe("Meeting booked");
+    expect(mapSheetStatus("Call Back").outcome).toBe("Call back later");
+    expect(mapSheetStatus("Not Interested").outcome).toBe("Not interested");
+    expect(mapSheetStatus("Interested").outcome).toBe("Interested");
+    expect(mapSheetStatus("Something odd")).toMatchObject({ outcome: "Not called", note: "Status in sheet: Something odd" });
+  });
+  it("still understands plain lines in the same paste box", () => {
+    expect(parseCallList("Blue Dental\t011 555 0102")).toEqual([{ business: "Blue Dental", contact: "", phone: "011 555 0102", notes: "" }]);
+  });
+});
+
+describe("sortLeads with tiers", () => {
+  const L = (id: string, tier: CallLead["tier"]): CallLead => ({
+    id, business: id, contact: "", phone: "", notes: "", outcome: "Not called", callback_on: null, attempts: 0,
+    last_called_on: null, called_by: null, client_id: null, created_at: id, tier,
+  });
+  it("Tier A before B before C, then pasted order", () => {
+    expect(sortLeads([L("c1", "C"), L("a2", "A"), L("b1", "B"), L("a1", "A"), L("none", "")], TODAY).map((l) => l.id)).toEqual(["a1", "a2", "b1", "c1", "none"]);
   });
 });

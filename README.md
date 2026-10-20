@@ -18,10 +18,12 @@ Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwi
    Run this **before** deploying a version that has the Quotes tab; until then the tab shows a "not switched on yet" notice.
 6. **SQL Editor → New query**: paste all of `supabase/migrations/0003_calls_expenses.sql` → **Run** (cold-call list, expenses, monthly target).
    Run 0002 and 0003 **before** deploying a version that uses them; until then those tabs show a "not switched on yet" notice.
-7. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
+7. **SQL Editor → New query**: paste all of `supabase/migrations/0004_lead_columns.sql` → **Run** (lead-sheet columns: allocated to, niche, tier, city, lead ID).
+   Run it **before** pasting a lead sheet; plain pastes (name, phone) work without it.
+8. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
    This links the two logins to *Michael* / *Trevor* (this is what grants access) and loads the starter data
    (Mohammed, R10 500 invoice, R15 000 deposit, "Intranet" deal, six tasks). Safe to re-run.
-8. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
+9. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
    Do **not** use the `service_role` key anywhere in this app.
 
 ## 2. Run locally
@@ -60,6 +62,7 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 | Profit | money received − expenses, by month (expenses by the date spent) |
 | Projected | open deals (not Paid) by the month each deal is due; overdue open deals count in the current month; the chart shows 6 months back and 5 ahead |
 | Target | one monthly revenue target (Money → Revenue), drawn as a dashed line |
+| Lead sheet | Calls → Paste list accepts rows copied straight from a Google Sheet (Lead ID, Assigned To, Niche, Tier, Business Name, Category, Phone, City, Reviews, Unclaimed GBP, Also Listed As, Call Status). Tick callers under "Leave out the leads allocated to…" to skip theirs. Sheet statuses map to call results; Tier A shows first within each result group |
 | Cold calls | Calls page: paste a list (duplicates by phone number are skipped), tick No answer / Call back later / Meeting booked / Interested / Not interested. "Interested" can create a client (source "Cold call") + a "Send quote" task + a call log entry in one step |
 
 ## Tests

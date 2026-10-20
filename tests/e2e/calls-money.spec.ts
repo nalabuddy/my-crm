@@ -102,6 +102,103 @@ test.describe.serial("cold call list", () => {
   });
 });
 
+test.describe.serial("lead sheet paste", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+  const T = "\t";
+  const hdr = ["Lead ID", "Assigned To", "Niche", "Tier", "Business Name", "Category", "Phone", "City", "Reviews", "Unclaimed GBP", "Also Listed As (same phone)", "Call Status (live)"].join(T);
+  const row = (id: string, who: string, tier: string, name: string, phone: string, status = "Not Called") =>
+    [id, who, "Legal", tier, `${name} ${run}`, "Attorney", phone, "Gqeberha", "5", "Yes", "", status].join(T);
+  const ph = (k: number) => `+27 82 ${n} ${100 + k}`;
+  const SHEET = [
+    hdr,
+    row("L-901", "Dom", "A", "Sheet Dom Alpha", ph(1)),
+    row("L-902", "Dom", "C", "Sheet Dom Charlie", ph(2), "No Answer"),
+    row("L-903", "Obi", "B", "Sheet Obi Bravo", ph(3)),
+    row("L-904", "Tyler", "A", "Sheet Tyler Alpha", ph(4), "Do Not Call"),
+    row("L-905", "Tyler", "C", "Sheet Tyler Charlie", ph(5)),
+  ].join("\n");
+  const mine = (page: Page) => page.getByTestId("lead-card").filter({ hasText: run });
+
+  test("paste the sheet, leave out a caller, filters and statuses", async ({ page }) => {
+    await page.goto("/calls");
+    await page.getByRole("button", { name: "Paste list" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Call list").fill(SHEET);
+    await expect(dialog.getByTestId("paste-preview")).toContainText("5 businesses found (lead sheet detected)");
+    await expect(dialog.getByText("Dom (2 leads)")).toBeVisible();
+    await expect(dialog.getByText("Obi (1 leads)")).toBeVisible();
+    await expect(dialog.getByText("Tyler (2 leads)")).toBeVisible();
+
+    await dialog.getByLabel(/Obi/).check();                       // leave Obi's out
+    await expect(dialog.getByTestId("paste-preview")).toContainText("4 businesses found");
+    await expect(dialog.getByTestId("paste-preview")).toContainText("1 left out");
+    await dialog.getByRole("button", { name: /^Add 4/ }).click();
+    await expect(page.getByTestId("notice")).toContainText("Added 4");
+
+    await page.getByRole("button", { name: /^All \(/ }).click();
+    await page.getByLabel("Search the call list").fill(run);
+    await expect(mine(page)).toHaveCount(4);
+    await expect(page.getByText(`Sheet Obi Bravo ${run}`)).toHaveCount(0);          // left out
+
+    // chips and the order: Tier A first
+    await expect(mine(page).first()).toContainText("Tier A");
+    await expect(mine(page).first().getByTestId("lead-chips")).toContainText("Legal");
+    await expect(mine(page).first().getByTestId("lead-chips")).toContainText("Gqeberha");
+
+    // statuses from the sheet
+    const dnc = mine(page).filter({ hasText: "Sheet Tyler Alpha" });
+    await expect(dnc.getByTestId("lead-status")).toHaveText("Not interested");
+    await expect(dnc).toContainText("DO NOT CALL");
+    const noans = mine(page).filter({ hasText: "Sheet Dom Charlie" });
+    await expect(noans.getByTestId("lead-status")).toHaveText("No answer");
+    await expect(noans).toContainText("Called 1×");
+
+    // filters
+    await page.getByLabel("Allocated to").selectOption("Dom");
+    await expect(mine(page)).toHaveCount(2);
+    await page.getByLabel("Tier").selectOption("A");
+    await expect(mine(page)).toHaveCount(1);
+    await expect(mine(page)).toContainText("Sheet Dom Alpha");
+    await page.getByLabel("Allocated to").selectOption("");
+    await expect(mine(page)).toHaveCount(2);                                         // both Tier A: Dom + Tyler
+    await page.getByLabel("Tier").selectOption("");
+
+    // pasting the same sheet again adds nothing new (same phone numbers)
+    await page.getByRole("button", { name: "Paste list" }).click();
+    await page.getByRole("dialog").getByLabel("Call list").fill(SHEET);
+    await page.getByRole("dialog").getByLabel(/Obi/).check();
+    await page.getByRole("dialog").getByRole("button", { name: /^Add 4/ }).click();
+    await expect(page.getByTestId("notice")).toContainText("Added 0, skipped 4");
+
+    // clean up
+    for (const name of ["Sheet Dom Alpha", "Sheet Dom Charlie", "Sheet Tyler Alpha", "Sheet Tyler Charlie"]) {
+      await mine(page).filter({ hasText: name }).getByRole("button", { name: `${name} ${run}` }).click();
+      page.once("dialog", (d) => d.accept());
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(mine(page).filter({ hasText: name })).toHaveCount(0);
+    }
+  });
+
+  test("not keeping the allocation label leaves it blank", async ({ page }) => {
+    await page.goto("/calls");
+    await page.getByRole("button", { name: "Paste list" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Call list").fill([hdr, row("L-911", "Dom", "B", "NoLabel Dom", ph(11))].join("\n"));
+    await dialog.getByLabel(/Keep who each lead was allocated to/).uncheck();
+    await dialog.getByRole("button", { name: /^Add 1/ }).click();
+    await expect(page.getByTestId("notice")).toContainText("Added 1");
+    await page.getByRole("button", { name: /^All \(/ }).click();
+    await page.getByLabel("Search the call list").fill(run);
+    const card = page.getByTestId("lead-card").filter({ hasText: `NoLabel Dom ${run}` });
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("lead-chips")).not.toContainText("→");
+    await card.getByRole("button", { name: `NoLabel Dom ${run}` }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    await expect(card).toHaveCount(0);
+  });
+});
+
 test.describe.serial("expenses, profit, projected, target", () => {
   test.beforeEach(async ({ page }) => { await login(page); });
 
