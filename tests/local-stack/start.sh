@@ -9,7 +9,7 @@ DB=crm_e2e
 pg_lsclusters | grep -q online || { pg_ctlcluster 16 main start; sleep 3; }
 PSQL="su postgres -c"
 $PSQL "psql -q -c 'drop database if exists $DB' -c 'create database $DB'"
-cat "$ROOT/tests/local-stack/stub.sql" "$ROOT/supabase/migrations/0001_init.sql" "$ROOT/supabase/seed.sql" | $PSQL "psql -q -v ON_ERROR_STOP=1 -d $DB"
+cat "$ROOT/tests/local-stack/stub.sql" "$ROOT"/supabase/migrations/*.sql "$ROOT/supabase/seed.sql" | $PSQL "psql -q -v ON_ERROR_STOP=1 -d $DB"
 export PGRST_DB_URI="postgres://authenticator:pw@127.0.0.1:5432/$DB" PGRST_DB_SCHEMAS=public PGRST_DB_ANON_ROLE=anon
 "${PGRST_BIN:?set PGRST_BIN}" > /tmp/postgrest.log 2>&1 &
 node "$ROOT/tests/local-stack/gateway.mjs" > /tmp/gateway.log 2>&1 &

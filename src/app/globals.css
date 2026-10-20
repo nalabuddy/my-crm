@@ -4,12 +4,12 @@
 
 :root {
   --bg: 244 246 250; --card: 255 255 255; --line: 218 224 235; --ink: 20 26 40; --muted: 100 112 135;
-  --accent: 14 148 143; --accent-ink: 255 255 255; --good: 22 140 90; --bad: 200 70 60; --warn: 165 105 25;
+  --violet: 120 80 200; --accent: 14 148 143; --accent-ink: 255 255 255; --good: 22 140 90; --bad: 200 70 60; --warn: 165 105 25;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
   --bg: 10 13 20; --card: 26 31 43; --line: 42 49 66; --ink: 234 239 248; --muted: 147 162 194;
-  --accent: 27 194 188; --accent-ink: 7 10 16; --good: 63 193 137; --bad: 224 118 107; --warn: 217 160 80;
+  --violet: 165 133 219; --accent: 27 194 188; --accent-ink: 7 10 16; --good: 63 193 137; --bad: 224 118 107; --warn: 217 160 80;
   color-scheme: dark;
 }
 html, body { background: rgb(var(--bg)); color: rgb(var(--ink)); }

@@ -106,6 +106,51 @@ test.describe.serial("main flows", () => {
     await expect(card.getByTestId("chase-whatsapp")).toHaveCount(0);
   });
 
+  test("quote -> accepted -> invoice with deposit -> revenue", async ({ page }) => {
+    await page.goto("/money");
+    await page.getByRole("tab", { name: "Quotes" }).click();
+    await page.getByRole("button", { name: "+ Quote" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Client").selectOption({ label: CLIENT });
+    await dialog.getByLabel("What is it for?").fill(`E2E quote ${run}`);
+    await dialog.getByLabel("Quoted amount (R)").fill("10000");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    const card = page.getByTestId("quote-card").filter({ hasText: `E2E quote ${run}` });
+    await expect(card.getByTestId("quote-status")).toContainText("Draft");
+
+    await card.getByRole("button", { name: "Mark sent" }).click();
+    await expect(card.getByTestId("quote-status")).toContainText("Sent");
+    await card.getByRole("button", { name: "Accepted", exact: true }).click();
+    await expect(card.getByTestId("quote-status")).toContainText("Accepted");
+
+    await card.getByRole("button", { name: "Make invoice" }).click();
+    await dialog.getByLabel("50% deposit").check();
+    await expect(dialog.getByTestId("invoice-preview")).toContainText("5\u00A0000");
+    await dialog.getByRole("button", { name: "Create invoice" }).click();
+    await expect(page.getByTestId("quote-card").filter({ hasText: `E2E quote ${run}` })).toHaveCount(0); // invoiced quotes leave "open"
+
+    await page.getByRole("tab", { name: "Invoices" }).click();
+    const deposit = page.getByTestId("invoice-card").filter({ hasText: `E2E quote ${run} (deposit)` });
+    const final = page.getByTestId("invoice-card").filter({ hasText: `E2E quote ${run}` }).filter({ hasNotText: "(deposit)" });
+    await expect(deposit.getByTestId("balance")).toContainText("5\u00A0000");
+    await expect(final.getByTestId("balance")).toContainText("5\u00A0000");
+
+    // pay the deposit -> this month's money received goes up by exactly the deposit
+    const thisMonth = async () => {
+      await page.getByRole("tab", { name: "Revenue" }).click();
+      const t = (await page.getByTestId("rev-this-month").innerText()).replace(/[^\d]/g, "");
+      await page.getByRole("tab", { name: "Invoices" }).click();
+      return Number(t);
+    };
+    const before = await thisMonth();
+    await deposit.getByRole("button", { name: "Record payment" }).click();
+    await dialog.getByRole("button", { name: "Record payment" }).click();
+    await expect(deposit.getByTestId("balance")).toHaveText("Paid").catch(() => {}); // leaves "outstanding" once paid
+    await expect.poll(thisMonth).toBe(before + 5000);
+    await page.getByRole("tab", { name: "Revenue" }).click();
+    await expect(page.getByTestId("rev-row")).toHaveCount(12);
+  });
+
   test("move deal through the pipeline", async ({ page }) => {
     await page.goto("/pipeline");
     await page.getByRole("button", { name: "+ Add deal" }).click();
