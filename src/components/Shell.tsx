@@ -7,6 +7,7 @@ import { signOut } from "@/app/actions";
 const NAV = [
   { href: "/", label: "Overview", icon: "◎" },
   { href: "/tasks", label: "Tasks", icon: "✓" },
+  { href: "/calls", label: "Calls", icon: "☎" },
   { href: "/clients", label: "Clients", icon: "☺" },
   { href: "/pipeline", label: "Pipeline", icon: "▤" },
   { href: "/money", label: "Money", icon: "R" },
@@ -54,7 +55,7 @@ export default function Shell({ me, children }: { me: string; children: React.Re
         <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 md:pb-10 md:pt-6">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={`flex flex-col items-center py-2 text-[11px] ${active(n.href) ? "text-accent" : "text-muted"}`}>
             <span className="text-base leading-none">{n.icon}</span>{n.label}

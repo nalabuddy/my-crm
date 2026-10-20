@@ -5,12 +5,13 @@ import ChaseLinks from "@/components/ChaseLinks";
 import { InvoiceModal, PaymentList, PaymentModal } from "@/components/forms";
 import { Empty, ErrorText, useAct } from "@/components/ui";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
-import type { Client, Deal, Invoice, Payment, Quote } from "@/lib/types";
+import type { Client, Deal, Expense, Invoice, Payment, Quote } from "@/lib/types";
+import ExpensesPanel from "./ExpensesPanel";
 import QuotesPanel from "./QuotesPanel";
 import RevenuePanel from "./RevenuePanel";
 
-export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean }) {
-  const [tab, setTab] = useState<"invoices" | "quotes" | "revenue">("invoices");
+export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady, expenses, target, extrasReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean; expenses: Expense[]; target: number; extrasReady: boolean }) {
+  const [tab, setTab] = useState<"invoices" | "quotes" | "expenses" | "revenue">("invoices");
   const [filter, setFilter] = useState<"outstanding" | "all">("outstanding");
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -21,20 +22,21 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
   const shown = invoices.filter((i) => filter === "all" || i.balance > 0);
   const outstanding = invoices.reduce((s, i) => s + Math.max(i.balance, 0), 0);
 
-  const tabs = [["invoices", "Invoices"], ["quotes", "Quotes"], ["revenue", "Revenue"]] as const;
+  const tabs = [["invoices", "Invoices"], ["quotes", "Quotes"], ["expenses", "Expenses"], ["revenue", "Revenue"]] as const;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h1 className="text-xl font-bold">Money</h1><p className="text-sm text-muted">Outstanding: <b className="text-ink">{fmtRand(outstanding)}</b></p></div>
         {tab === "invoices" && <button className="btn btn-primary" disabled={!clients.length} onClick={() => setAdding(true)}>+ Invoice / deposit</button>}
       </div>
-      <div className="flex gap-2" role="tablist">
+      <div className="flex flex-wrap gap-2" role="tablist">
         {tabs.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? "btn-primary" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
       {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} />}
-      {tab === "revenue" && <RevenuePanel payments={payments} />}
+      {tab === "expenses" && <ExpensesPanel expenses={expenses} ready={extrasReady} />}
+      {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} />}
       {tab === "invoices" && (<>
       <div className="flex gap-2">
         {(["outstanding", "all"] as const).map((f) => (

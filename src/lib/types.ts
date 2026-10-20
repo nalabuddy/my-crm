@@ -6,6 +6,7 @@ export const OWNERS = ["Michael", "Trevor", "Both"] as const;
 export const PRIORITIES = ["Normal", "High"] as const;
 export const ACTIVITY_TYPES = ["Call", "WhatsApp", "Email", "Meeting", "Note"] as const;
 export const INVOICE_KINDS = ["Invoice", "Deposit"] as const;
+export const LEAD_OUTCOMES = ["Not called", "No answer", "Call back later", "Meeting booked", "Interested", "Not interested"] as const;
 export const QUOTE_STATUSES = ["Draft", "Sent", "Accepted", "Declined"] as const;
 
 export type Status = (typeof STATUSES)[number];
@@ -42,3 +43,11 @@ export type Task = {
 export type Activity = {
   id: string; client_id: string; type: ActivityType; text: string; at: string; by: Person; created_at: string;
 };
+
+export type LeadOutcome = (typeof LEAD_OUTCOMES)[number];
+export type CallLead = {
+  id: string; business: string; contact: string; phone: string; notes: string; outcome: LeadOutcome;
+  callback_on: string | null; attempts: number; last_called_on: string | null; called_by: Person | null;
+  client_id: string | null; created_at: string;
+};
+export type Expense = { id: string; spent_on: string; amount: number; category: string; note: string };

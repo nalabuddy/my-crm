@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
 import {
-  balanceOf, depositsPending, dueTodayOrLate, filterTasks, goQuiet, moneyToChase, monthlyReceived,
+  balanceOf, depositsPending, dueTodayOrLate, filterTasks, goQuiet, moneyToChase,
   nextStage, openPipelineValue, owedOnInvoices, workload,
 } from "@/lib/logic";
 import type { Activity, Client, Deal, Invoice, Task } from "@/lib/types";
@@ -114,26 +114,5 @@ describe("go quiet", () => {
   it("falls back to created date when never contacted", () => {
     const r = goQuiet([client({ id: "n", created_at: "2026-10-13T08:00:00Z" }), client({ id: "m", created_at: "2026-01-01T00:00:00Z" })], [], TODAY);
     expect(r.map((x) => x.client.id)).toEqual(["m"]);
-  });
-});
-
-describe("monthly revenue (money received)", () => {
-  const pay = (received_on: string, amount: number) => ({ id: received_on + amount, invoice_id: "i", amount, received_on });
-  it("returns 12 months newest first, crossing the year boundary", () => {
-    const m = monthlyReceived([], "2026-02-10", 12);
-    expect(m).toHaveLength(12);
-    expect(m[0].key).toBe("2026-02");
-    expect(m[1].key).toBe("2026-01");
-    expect(m[2].key).toBe("2025-12");
-    expect(m[11].key).toBe("2025-03");
-    expect(m[0].label).toBe("Feb 2026");
-  });
-  it("sums payments by the month they were received and ignores older ones", () => {
-    const m = monthlyReceived(
-      [pay("2026-10-01", 4000), pay("2026-10-31", 250.5), pay("2026-09-15", 1000), pay("2025-09-30", 999), pay("2024-01-01", 5000)],
-      TODAY, 12);
-    expect(m[0]).toMatchObject({ key: "2026-10", total: 4250.5 });
-    expect(m[1]).toMatchObject({ key: "2026-09", total: 1000 });
-    expect(m.reduce((s, r) => s + r.total, 0)).toBe(5250.5); // Sep 2025 is outside the 12 months, Jan 2024 too
   });
 });

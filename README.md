@@ -16,10 +16,12 @@ Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwi
 4. **SQL Editor → New query**: paste all of `supabase/migrations/0001_init.sql` → **Run**.
 5. **SQL Editor → New query**: paste all of `supabase/migrations/0002_quotes.sql` → **Run** (quotes + the "make invoice" function).
    Run this **before** deploying a version that has the Quotes tab; until then the tab shows a "not switched on yet" notice.
-6. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
+6. **SQL Editor → New query**: paste all of `supabase/migrations/0003_calls_expenses.sql` → **Run** (cold-call list, expenses, monthly target).
+   Run 0002 and 0003 **before** deploying a version that uses them; until then those tabs show a "not switched on yet" notice.
+7. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
    This links the two logins to *Michael* / *Trevor* (this is what grants access) and loads the starter data
    (Mohammed, R10 500 invoice, R15 000 deposit, "Intranet" deal, six tasks). Safe to re-run.
-7. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
+8. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
    Do **not** use the `service_role` key anywhere in this app.
 
 ## 2. Run locally
@@ -54,7 +56,11 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 | Mine | the logged-in user; tasks assigned to "Both" show for each person |
 | Over-payment | rejected by a database trigger, not just the form |
 | Quote → invoice | Money → Quotes → "Make invoice": one invoice, or deposit % + final invoice, created atomically (`convert_quote`); a linked deal moves forward, never back |
-| Revenue | money actually **received** (payments), by the month of the received date, last 12 months |
+| Revenue | money actually **received** (payments), by the month of the received date |
+| Profit | money received − expenses, by month (expenses by the date spent) |
+| Projected | open deals (not Paid) by the month each deal is due; overdue open deals count in the current month; the chart shows 6 months back and 5 ahead |
+| Target | one monthly revenue target (Money → Revenue), drawn as a dashed line |
+| Cold calls | Calls page: paste a list (duplicates by phone number are skipped), tick No answer / Call back later / Meeting booked / Interested / Not interested. "Interested" can create a client (source "Cold call") + a "Send quote" task + a call log entry in one step |
 
 ## Tests
 
@@ -78,7 +84,7 @@ Chase link, move deal, Overview numbers, "no profile" account turned away) need 
 
 If your machine already has Chromium, set `E2E_CHROMIUM=/path/to/chrome`.
 
-Database security checks are in `tests/db/` (`security.sql`: RLS + over-payment trigger; `quotes.sql`: quote conversion, deposit split, refusals, strangers).
+Database security checks are in `tests/db/` (`security.sql`: RLS + over-payment trigger; `quotes.sql`: quote conversion; `calls.sql`: lead → client, expenses, target).
 
 ## Adding or changing a user
 
