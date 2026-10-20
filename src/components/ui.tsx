@@ -58,3 +58,11 @@ export function Empty({ children }: { children: ReactNode }) {
 export function ConfirmButton({ label, confirm, onConfirm, className = "btn btn-danger btn-sm" }: { label: string; confirm: string; onConfirm: () => void; className?: string }) {
   return <button type="button" className={className} onClick={() => window.confirm(confirm) && onConfirm()}>{label}</button>;
 }
+
+/** Amount box that accepts how people actually type money ("10 500", "R10,500", "10500.50"). */
+export function MoneyInput({ value, onChange, label, required, placeholder = "e.g. 10 500", id }: {
+  value: string; onChange: (v: string) => void; label?: string; required?: boolean; placeholder?: string; id?: string;
+}) {
+  return <input id={id} className="input" type="text" inputMode="decimal" autoComplete="off" aria-label={label}
+    required={required} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />;
+}

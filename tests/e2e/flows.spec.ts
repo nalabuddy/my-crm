@@ -74,7 +74,6 @@ test.describe.serial("main flows", () => {
 
     // server-side guard: bypass the browser max attribute
     await card.getByRole("button", { name: "Record payment" }).click();
-    await dialog.getByLabel("Amount received (R)").evaluate((el: HTMLInputElement) => el.removeAttribute("max"));
     await dialog.getByLabel("Amount received (R)").fill("351");
     await dialog.getByRole("button", { name: "Record payment" }).click();
     await expect(dialog.getByRole("alert")).toContainText(/exceeds/i);
@@ -149,6 +148,49 @@ test.describe.serial("main flows", () => {
     await expect.poll(thisMonth).toBe(before + 5000);
     await page.getByRole("tab", { name: "Revenue" }).click();
     await expect(page.getByTestId("rev-row")).toHaveCount(12);
+  });
+
+  test("invoice can start part-paid; amounts accept spaces, R and commas; total can't go below what's paid", async ({ page }) => {
+    await page.goto("/money");
+    await page.getByRole("button", { name: "+ Invoice / deposit" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Client").selectOption({ label: CLIENT });
+    await dialog.getByLabel("Label").fill(`E2E part-paid ${run}`);
+    await dialog.getByLabel("Total amount (R)").fill("R 10 500");          // typed the way people write it
+    await dialog.getByLabel("Already paid (R)").fill("4 000");
+    await expect(dialog.getByTestId("invoice-owed-preview")).toContainText("6\u00A0500");
+    await expect(dialog.getByLabel("Still owed (R)")).toHaveValue("6500");
+    await dialog.getByLabel("Still owed (R)").fill("2 000");             // typing the owed amount works out the paid amount
+    await expect(dialog.getByLabel("Already paid (R)")).toHaveValue("8500");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    const card = page.getByTestId("invoice-card").filter({ hasText: `E2E part-paid ${run}` });
+    await expect(card.getByTestId("balance")).toContainText("2\u00A0000");
+    await expect(card).toContainText("1 payment");
+    await expect(card).toContainText("8\u00A0500");
+
+    // a comma-decimal payment
+    await card.getByRole("button", { name: "Record payment" }).click();
+    await dialog.getByLabel("Amount received (R)").fill("500,50");
+    await dialog.getByRole("button", { name: "Record payment" }).click();
+    await expect(card.getByTestId("balance")).toContainText("1\u00A0499,50");
+
+    // can't lower the total below what has been paid
+    await card.getByRole("button", { name: new RegExp(CLIENT) }).click();
+    await expect(dialog.getByTestId("invoice-paid-summary")).toContainText("Paid so far");
+    await dialog.getByLabel("Total amount (R)").fill("5 000");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("already been paid");
+    await page.keyboard.press("Escape");
+
+    // junk is refused with a helpful message
+    await page.getByRole("button", { name: "+ Invoice / deposit" }).click();
+    await dialog.getByLabel("Client").selectOption({ label: CLIENT });
+    await dialog.getByLabel("Label").fill("junk");
+    await dialog.getByLabel("Total amount (R)").fill("ten thousand");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Enter an amount");
+    await page.keyboard.press("Escape");
   });
 
   test("move deal through the pipeline", async ({ page }) => {

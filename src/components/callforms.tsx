@@ -1,23 +1,23 @@
 "use client";
 import { useMemo, useState } from "react";
 import { addExpense, addLeads, deleteExpense, deleteLead, updateExpense, updateLead } from "@/app/actions";
-import { todayISO } from "@/lib/format";
+import { MONEY_HELP, parseMoney, todayISO } from "@/lib/format";
 import { parseCallList } from "@/lib/logic";
 import type { CallLead, Expense } from "@/lib/types";
-import { ConfirmButton, ErrorText, Field, Modal, useAct } from "./ui";
+import { ConfirmButton, ErrorText, Field, Modal, MoneyInput, useAct } from "./ui";
 
 export const EXPENSE_CATEGORIES = ["Hosting", "Software", "Marketing", "Fuel / travel", "Airtime / data", "Equipment", "Fees", "Salaries", "General"];
 
 export function ExpenseModal({ expense, onClose }: { expense?: Expense; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [f, setF] = useState({ spent_on: expense?.spent_on ?? todayISO(), amount: String(expense?.amount ?? ""), category: expense?.category ?? "General", note: expense?.note ?? "" });
   const set = <K extends keyof typeof f>(k: K, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const payload = { ...f, amount: Number(f.amount) };
+  const payload = { ...f, amount: parseMoney(f.amount) ?? 0 };
   return (
     <Modal title={expense ? "Edit expense" : "Add expense"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => expense ? updateExpense(expense.id, payload) : addExpense(payload), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const amt = parseMoney(f.amount); if (amt === null || amt <= 0) return setError(MONEY_HELP); act(() => expense ? updateExpense(expense.id, payload) : addExpense(payload), onClose); }}>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={f.amount} onChange={(e) => set("amount", e.target.value)} /></Field>
+          <Field label="Amount (R)"><MoneyInput required value={f.amount} onChange={(v) => set("amount", v)} /></Field>
           <Field label="Date"><input className="input" required type="date" value={f.spent_on} onChange={(e) => set("spent_on", e.target.value)} /></Field>
         </div>
         <Field label="Category">
