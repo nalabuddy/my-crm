@@ -57,7 +57,7 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
                   </button>
                   <div className="text-right">
                     <div className={`text-lg font-bold tabular-nums ${i.balance > 0 ? "text-bad" : "text-good"}`} data-testid="balance">{i.balance > 0 ? fmtRand(i.balance) : "Paid"}</div>
-                    <div className="text-xs text-muted">of {fmtRand(i.amount)}</div>
+                    <div className="text-xs text-muted">{i.balance > 0 ? "outstanding of" : "total"} {fmtRand(i.amount)}</div>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-end gap-x-4 gap-y-2 text-xs text-muted">

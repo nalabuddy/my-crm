@@ -121,15 +121,32 @@ const invoiceSchema = z.object({
   kind: z.enum(INVOICE_KINDS), amount: money.refine((n) => n > 0, "Amount must be more than 0"),
   due: date, promised_date: date, notes: z.string().default(""),
 });
-export async function addInvoice(input: z.input<typeof invoiceSchema>): Promise<Result> {
-  return run(invoiceSchema, input, (v, { supabase }) => supabase.from("invoices").insert(v));
+export async function addInvoice(input: z.input<typeof invoiceSchema> & { paid?: number; paid_on?: string }): Promise<Result> {
+  const schema = invoiceSchema.extend({ paid: money.default(0), paid_on: date })
+    .refine((v) => v.paid <= v.amount, { message: "Already paid can’t be more than the total.", path: ["paid"] });
+  return run(schema, input, async ({ paid, paid_on, ...inv }, { supabase }) => {
+    const ins = await supabase.from("invoices").insert(inv).select("id").single();
+    if (ins.error || !ins.data) return { error: ins.error ?? { message: "Could not create the invoice" } };
+    if (paid > 0) {
+      const pay = await supabase.from("payments").insert({ invoice_id: ins.data.id, amount: paid, received_on: paid_on ?? todayISO() });
+      if (pay.error) {
+        await supabase.from("invoices").delete().eq("id", ins.data.id); // don't leave an invoice without its payment
+        return { error: pay.error };
+      }
+    }
+    return { error: null, id: ins.data.id };
+  });
 }
-
 export async function updateInvoice(id: string, input: z.input<typeof invoiceSchema>): Promise<Result> {
-  return run(invoiceSchema.extend({ id: uuid }), { ...input, id }, ({ id, ...v }, { supabase }) =>
-    supabase.from("invoices").update(v).eq("id", id));
+  return run(invoiceSchema.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
+    const cur = await supabase.from("invoice_balances").select("paid").eq("id", id).single();
+    if (cur.error) return { error: cur.error };
+    if (v.amount < Number(cur.data.paid)) {
+      return { error: { message: `R${Number(cur.data.paid).toLocaleString("en-ZA")} has already been paid on this invoice, so the total can’t be lower than that. Fix or delete a payment first.` } };
+    }
+    return supabase.from("invoices").update(v).eq("id", id);
+  });
 }
-
 export async function setPromisedDate(id: string, promised_date: string | null): Promise<Result> {
   return run(z.object({ id: uuid, promised_date: date }), { id, promised_date }, (v, { supabase }) =>
     supabase.from("invoices").update({ promised_date: v.promised_date }).eq("id", v.id));

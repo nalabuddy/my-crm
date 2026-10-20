@@ -4,12 +4,12 @@ import {
   addActivity, addClient, addDeal, addInvoice, addTask, deleteClient, deleteDeal, deleteInvoice,
   deleteTask, deletePayment, deleteQuote, addQuote, convertQuote, updateQuote, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
 } from "@/app/actions";
-import { todayISO, fmtDate, fmtRand } from "@/lib/format";
+import { MONEY_HELP, parseMoney, todayISO, fmtDate, fmtRand } from "@/lib/format";
 import {
   ACTIVITY_TYPES, INVOICE_KINDS, OWNERS, PRIORITIES, QUOTE_STATUSES, SOURCES, STAGES, STATUSES,
   type Client, type Deal, type Invoice, type Payment, type Quote, type Task,
 } from "@/lib/types";
-import { ConfirmButton, ErrorText, Field, Modal, Select, useAct } from "./ui";
+import { ConfirmButton, ErrorText, Field, Modal, MoneyInput, Select, useAct } from "./ui";
 
 const clientOptions = (clients: Client[]) => (
   <>
@@ -79,20 +79,20 @@ export function TaskModal({ task, clients, defaultClientId, onClose }: { task?: 
 }
 
 export function DealModal({ deal, clients, defaultClientId, onClose }: { deal?: Deal; clients: Client[]; defaultClientId?: string; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [f, setF] = useState({
     title: deal?.title ?? "", client_id: deal?.client_id ?? defaultClientId ?? "", value: String(deal?.value ?? ""),
     stage: deal?.stage ?? "Lead", owner: deal?.owner ?? "Both", due: deal?.due ?? "",
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
-  const payload = { ...f, value: Number(f.value || 0), due: f.due || null, client_id: f.client_id || null };
+  const payload = { ...f, value: parseMoney(f.value || "0") ?? 0, due: f.due || null, client_id: f.client_id || null };
   return (
     <Modal title={deal ? "Edit deal" : "Add deal"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => deal ? updateDeal(deal.id, payload) : addDeal(payload), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (f.value.trim() && parseMoney(f.value) === null) return setError(MONEY_HELP); act(() => deal ? updateDeal(deal.id, payload) : addDeal(payload), onClose); }}>
         <Field label="Deal"><input className="input" required value={f.title} onChange={(e) => set("title", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Client"><select className="input" value={f.client_id} onChange={(e) => set("client_id", e.target.value)}>{clientOptions(clients)}</select></Field>
-          <Field label="Value (R)"><input className="input" type="number" inputMode="decimal" min="0" step="0.01" value={f.value} onChange={(e) => set("value", e.target.value)} /></Field>
+          <Field label="Value (R)"><MoneyInput value={f.value} onChange={(v) => set("value", v)} /></Field>
           <Field label="Stage"><Select value={f.stage} options={STAGES} onChange={(v) => set("stage", v)} /></Field>
           <Field label="Owner"><Select value={f.owner} options={OWNERS} onChange={(v) => set("owner", v)} /></Field>
           <Field label="Due"><input className="input" type="date" value={f.due} onChange={(e) => set("due", e.target.value)} /></Field>
@@ -108,25 +108,57 @@ export function DealModal({ deal, clients, defaultClientId, onClose }: { deal?: 
 }
 
 export function InvoiceModal({ invoice, clients, defaultClientId, onClose }: { invoice?: Invoice; clients: Client[]; defaultClientId?: string; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [f, setF] = useState({
     client_id: invoice?.client_id ?? defaultClientId ?? clients[0]?.id ?? "", label: invoice?.label ?? "",
-    kind: invoice?.kind ?? "Invoice", amount: String(invoice?.amount ?? ""), due: invoice?.due ?? "",
+    kind: invoice?.kind ?? "Invoice", amount: invoice ? String(invoice.amount) : "", due: invoice?.due ?? "",
     promised_date: invoice?.promised_date ?? "", notes: invoice?.notes ?? "",
   });
+  // New invoices can start part- or fully-paid: "already paid" and "still owed" follow each other.
+  const [paid, setPaid] = useState("");
+  const [owedText, setOwedText] = useState<string | null>(null);
+  const [paidOn, setPaidOn] = useState(todayISO());
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
-  const payload = { ...f, amount: Number(f.amount), due: f.due || null, promised_date: f.promised_date || null };
+  const total = parseMoney(f.amount);
+  const paidN = paid.trim() ? parseMoney(paid) : 0;
+  const owedAuto = total !== null && paidN !== null ? String(Math.round((total - paidN) * 100) / 100) : "";
+  const owedShown = owedText ?? owedAuto;
+  const setOwed = (v: string) => {
+    setOwedText(v);
+    const o = parseMoney(v);
+    if (total !== null && o !== null) setPaid(String(Math.max(0, Math.round((total - o) * 100) / 100)));
+  };
   return (
     <Modal title={invoice ? "Edit invoice" : "Add invoice / deposit"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => invoice ? updateInvoice(invoice.id, payload) : addInvoice(payload), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => {
+        e.preventDefault();
+        if (total === null || total <= 0) return setError(MONEY_HELP);
+        if (!invoice && paidN === null) return setError("Already paid: " + MONEY_HELP);
+        if (!invoice && (paidN ?? 0) > total) return setError("Already paid can’t be more than the total.");
+        const base = { ...f, amount: total, due: f.due || null, promised_date: f.promised_date || null };
+        act(() => invoice ? updateInvoice(invoice.id, base) : addInvoice({ ...base, paid: paidN ?? 0, paid_on: paidOn }), onClose);
+      }}>
         <Field label="Client"><select className="input" required value={f.client_id} onChange={(e) => set("client_id", e.target.value)}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Label"><input className="input" required value={f.label} onChange={(e) => set("label", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Type"><Select value={f.kind} options={INVOICE_KINDS} onChange={(v) => set("kind", v)} /></Field>
-          <Field label="Amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={f.amount} onChange={(e) => set("amount", e.target.value)} /></Field>
+          <Field label="Total amount (R)"><MoneyInput required value={f.amount} onChange={(v) => { set("amount", v); setOwedText(null); }} /></Field>
+          {!invoice && <>
+            <Field label="Already paid (R)"><MoneyInput value={paid} placeholder="0" onChange={(v) => { setPaid(v); setOwedText(null); }} /></Field>
+            <Field label="Still owed (R)"><MoneyInput value={owedShown} placeholder="" onChange={setOwed} /></Field>
+            {(paidN ?? 0) > 0 && <Field label="Paid on"><input className="input" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} /></Field>}
+          </>}
           <Field label="Due"><input className="input" type="date" value={f.due} onChange={(e) => set("due", e.target.value)} /></Field>
           <Field label="Promised payment date"><input className="input" type="date" value={f.promised_date} onChange={(e) => set("promised_date", e.target.value)} /></Field>
         </div>
+        {invoice && (
+          <p className="rounded-lg border border-line p-3 text-sm" data-testid="invoice-paid-summary">
+            Paid so far <b>{fmtRand(invoice.paid)}</b> · still owed <b>{fmtRand(invoice.balance)}</b>. To add or fix a payment use <b>Record payment</b> on the invoice.
+          </p>
+        )}
+        {!invoice && total !== null && paidN !== null && (
+          <p className="text-sm text-muted" data-testid="invoice-owed-preview">Total {fmtRand(total)} · paid {fmtRand(paidN)} · <b className="text-ink">still owed {fmtRand(Math.max(total - paidN, 0))}</b></p>
+        )}
         <Field label="Notes"><textarea className="input py-2" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
         <ErrorText error={error} />
         <div className="flex justify-between gap-2">
@@ -139,15 +171,15 @@ export function InvoiceModal({ invoice, clients, defaultClientId, onClose }: { i
 }
 
 export function PaymentModal({ invoice, clientName, onClose }: { invoice: Invoice; clientName?: string; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [amount, setAmount] = useState(String(invoice.balance));
   const [on, setOn] = useState(todayISO());
   return (
     <Modal title="Record payment" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => recordPayment({ invoice_id: invoice.id, amount, received_on: on }), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const amt = parseMoney(amount); if (amt === null || amt <= 0) return setError(MONEY_HELP); act(() => recordPayment({ invoice_id: invoice.id, amount: amt, received_on: on }), onClose); }}>
         <p className="text-sm text-muted">{clientName ? `${clientName} · ` : ""}{invoice.label} · balance <b className="text-ink">{fmtRand(invoice.balance)}</b> of {fmtRand(invoice.amount)}</p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount received (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" max={invoice.balance} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Amount received (R)"><MoneyInput required value={amount} onChange={setAmount} /></Field>
           <Field label="Received on"><input className="input" required type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
         </div>
         <ErrorText error={error} />
@@ -199,14 +231,14 @@ export function PaymentList({ payments }: { payments: Payment[] }) {
 }
 
 function PaymentEditModal({ payment, onClose }: { payment: Payment; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [amount, setAmount] = useState(String(payment.amount));
   const [on, setOn] = useState(payment.received_on);
   return (
     <Modal title="Edit payment" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => updatePayment(payment.id, { amount, received_on: on }), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const amt = parseMoney(amount); if (amt === null || amt <= 0) return setError(MONEY_HELP); act(() => updatePayment(payment.id, { amount: amt, received_on: on }), onClose); }}>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Amount (R)"><MoneyInput required value={amount} onChange={setAmount} /></Field>
           <Field label="Received on"><input className="input" required type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
         </div>
         <ErrorText error={error} />
@@ -217,21 +249,21 @@ function PaymentEditModal({ payment, onClose }: { payment: Payment; onClose: () 
 }
 
 export function QuoteModal({ quote, clients, deals, onClose }: { quote?: Quote; clients: Client[]; deals: Deal[]; onClose: () => void }) {
-  const { act, pending, error } = useAct();
+  const { act, pending, error, setError } = useAct();
   const [f, setF] = useState({
     client_id: quote?.client_id ?? clients[0]?.id ?? "", deal_id: quote?.deal_id ?? "", label: quote?.label ?? "",
     amount: String(quote?.amount ?? ""), status: quote?.status ?? "Draft", sent_on: quote?.sent_on ?? "", notes: quote?.notes ?? "",
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
   const clientDeals = deals.filter((d) => d.client_id === f.client_id);
-  const payload = { ...f, amount: Number(f.amount), deal_id: f.deal_id || null, sent_on: f.sent_on || null };
+  const payload = { ...f, amount: parseMoney(f.amount) ?? 0, deal_id: f.deal_id || null, sent_on: f.sent_on || null };
   return (
     <Modal title={quote ? "Edit quote" : "Add quote"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); act(() => quote ? updateQuote(quote.id, payload) : addQuote(payload), onClose); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const amt = parseMoney(f.amount); if (amt === null || amt <= 0) return setError(MONEY_HELP); act(() => quote ? updateQuote(quote.id, payload) : addQuote(payload), onClose); }}>
         <Field label="Client"><select className="input" required value={f.client_id} onChange={(e) => setF((p) => ({ ...p, client_id: e.target.value, deal_id: "" }))}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="What is it for?"><input className="input" required placeholder="e.g. 5-page website" value={f.label} onChange={(e) => set("label", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Quoted amount (R)"><input className="input" required type="number" inputMode="decimal" min="0.01" step="0.01" value={f.amount} onChange={(e) => set("amount", e.target.value)} /></Field>
+          <Field label="Quoted amount (R)"><MoneyInput required value={f.amount} onChange={(v) => set("amount", v)} /></Field>
           <Field label="Status"><Select value={f.status} options={QUOTE_STATUSES} onChange={(v) => set("status", v)} /></Field>
           <Field label="Sent on"><input className="input" type="date" value={f.sent_on} onChange={(e) => set("sent_on", e.target.value)} /></Field>
           <Field label="Linked deal"><select className="input" value={f.deal_id} onChange={(e) => set("deal_id", e.target.value)}><option value="">— none —</option>{clientDeals.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}</select></Field>

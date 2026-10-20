@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtDate, fmtRand, todayISO } from "@/lib/format";
+import { fmtDate, fmtRand, parseMoney, todayISO } from "@/lib/format";
 import {
   balanceOf, depositsPending, dueTodayOrLate, filterTasks, goQuiet, moneyToChase,
   nextStage, openPipelineValue, owedOnInvoices, workload,
@@ -114,5 +114,20 @@ describe("go quiet", () => {
   it("falls back to created date when never contacted", () => {
     const r = goQuiet([client({ id: "n", created_at: "2026-10-13T08:00:00Z" }), client({ id: "m", created_at: "2026-01-01T00:00:00Z" })], [], TODAY);
     expect(r.map((x) => x.client.id)).toEqual(["m"]);
+  });
+});
+
+describe("parseMoney (typed amounts)", () => {
+  it("accepts the ways people actually type rand", () => {
+    for (const [typed, want] of [
+      ["10500", 10500], ["10 500", 10500], ["R10 500", 10500], ["R 10 500", 10500], ["r10500", 10500],
+      ["10,500", 10500], ["R10,500", 10500], ["1,234,567", 1234567], ["1 234 567", 1234567],
+      ["10500.50", 10500.5], ["10500,50", 10500.5], ["R 10 500,50", 10500.5], ["10,500.75", 10500.75],
+      ["1.234.567,89", 1234567.89], ["1.234.567", 1234567], ["10,5", 10.5], ["0", 0], ["0,5", 0.5],
+      ["10 500", 10500], ["  250  ", 250],
+    ] as const) expect(parseMoney(typed), typed).toBe(want);
+  });
+  it("rejects anything that is not an amount", () => {
+    for (const bad of ["", "   ", "abc", "ten thousand", "-5", "10 5 x", "R", "1,2,3x", "10..5", "--", "10 5", "1,23,456", "1.23.456", "1,234.56.7", "12,34,567.89", "10,5,5", "10.500", "10.555"]) expect(parseMoney(bad), bad).toBeNull();
   });
 });
