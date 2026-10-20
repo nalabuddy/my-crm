@@ -114,8 +114,9 @@ test.describe.serial("lead sheet paste", () => {
     row("L-901", "Dom", "A", "Sheet Dom Alpha", ph(1)),
     row("L-902", "Dom", "C", "Sheet Dom Charlie", ph(2), "No Answer"),
     row("L-903", "Obi", "B", "Sheet Obi Bravo", ph(3)),
-    row("L-904", "Tyler", "A", "Sheet Tyler Alpha", ph(4), "Do Not Call"),
+    row("L-904", "Tyler", "A", "Sheet Tyler Alpha", ph(4), "Not Interested"),
     row("L-905", "Tyler", "C", "Sheet Tyler Charlie", ph(5)),
+    row("L-906", "Tyler", "B", "Sheet Never Call", ph(6), "Do Not Call"),
   ].join("\n");
   const mine = (page: Page) => page.getByTestId("lead-card").filter({ hasText: run });
 
@@ -148,7 +149,7 @@ test.describe.serial("lead sheet paste", () => {
     // statuses from the sheet
     const dnc = mine(page).filter({ hasText: "Sheet Tyler Alpha" });
     await expect(dnc.getByTestId("lead-status")).toHaveText("Not interested");
-    await expect(dnc).toContainText("DO NOT CALL");
+    await expect(page.getByText(`Sheet Never Call ${run}`)).toHaveCount(0);          // Do Not Call: never imported
     const noans = mine(page).filter({ hasText: "Sheet Dom Charlie" });
     await expect(noans.getByTestId("lead-status")).toHaveText("No answer");
     await expect(noans).toContainText("Called 1×");

@@ -148,7 +148,6 @@ type SheetKey = (typeof SHEET_KEYS)[number];
 export function mapSheetStatus(raw: string): { outcome: LeadOutcome; attempts: number; note: string } {
   const t = raw.trim().toLowerCase();
   if (!t || /^(not called|not yet called|new|none)$/.test(t)) return { outcome: "Not called", attempts: 0, note: "" };
-  if (/do not call|dnc|don'?t call/.test(t)) return { outcome: "Not interested", attempts: 1, note: "DO NOT CALL" };
   if (/no answer|voicemail|unanswered/.test(t)) return { outcome: "No answer", attempts: 1, note: "" };
   if (/call ?back|later/.test(t)) return { outcome: "Call back later", attempts: 1, note: "" };
   if (/meeting|booked|appointment/.test(t)) return { outcome: "Meeting booked", attempts: 1, note: "" };
@@ -183,6 +182,7 @@ export function parseCallList(text: string): ParsedLead[] {
       const business = cell("business");
       if (!business) continue;
       const tierRaw = cell("tier").toUpperCase();
+      if (/do not call|dnc|don'?t call/i.test(cell("status"))) continue; // never imported
       const st = mapSheetStatus(cell("status"));
       const reviews = cell("reviews");
       const notes = [

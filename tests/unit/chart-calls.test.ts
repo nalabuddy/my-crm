@@ -108,7 +108,7 @@ const ROWS = [
 describe("parseCallList: lead sheet rows", () => {
   it("reads the sheet columns (with the header row) into the right fields", () => {
     const r = parseCallList([HEADER, ...ROWS].join("\n"));
-    expect(r).toHaveLength(10);
+    expect(r).toHaveLength(9);
     expect(r[0]).toEqual({
       business: "Balt Attorneys", contact: "", phone: "+27 44 382 3111",
       notes: "Attorney · 62 Google reviews · Also listed as: Deon Boshoff Attorney",
@@ -118,7 +118,7 @@ describe("parseCallList: lead sheet rows", () => {
     expect(r[6]).toMatchObject({ business: "Schoeman En Hamman Prokureurs", assigned_to: "Obi", tier: "B", city: "Vredenburg" });
   });
   it("works without the header row too", () => {
-    expect(parseCallList(ROWS.join("\n"))).toHaveLength(10);
+    expect(parseCallList(ROWS.join("\n"))).toHaveLength(9);
   });
   it("keeps awkward names whole (commas, dashes, an embedded phone number)", () => {
     const r = parseCallList(ROWS.join("\n"));
@@ -134,9 +134,8 @@ describe("parseCallList: lead sheet rows", () => {
   });
   it("turns the sheet's call status into the app's results", () => {
     const r = parseCallList(ROWS.join("\n"));
-    expect(r[8]).toMatchObject({ outcome: "Not interested", attempts: 1 });
-    expect(r[8].notes).toContain("DO NOT CALL");
-    expect(r[9]).toMatchObject({ outcome: "No answer", attempts: 1 });
+    expect(r.some((l) => l.business.includes("Selvie Pillay"))).toBe(false); // Do Not Call rows are never imported
+    expect(r[8]).toMatchObject({ outcome: "No answer", attempts: 1 });
     expect(mapSheetStatus("Meeting Booked").outcome).toBe("Meeting booked");
     expect(mapSheetStatus("Call Back").outcome).toBe("Call back later");
     expect(mapSheetStatus("Not Interested").outcome).toBe("Not interested");
