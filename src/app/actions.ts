@@ -172,6 +172,38 @@ export async function addPastIncome(input: { rows: { month: string; amount: numb
     return { error: null, info: `Added ${rows.length} month${rows.length === 1 ? "" : "s"} of income` };
   });
 }
+const planSchema = z.object({
+  invoice_id: uuid,
+  rows: z.array(z.object({
+    amount: money.refine((n) => n > 0, "Every payment must be more than 0"),
+    due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date for every payment"),
+  })).min(1, "Add at least one payment").max(36),
+});
+const NEEDS_0005 = "Payment plans aren’t switched on yet. Run supabase/migrations/0005_payment_plans.sql in the Supabase SQL Editor, then try again.";
+/** Replace the payment plan of an invoice. The new rows go in first; the old ones are removed only once that worked. */
+export async function savePaymentPlan(input: { invoice_id: string; rows: { amount: number | string; due_on: string }[] }): Promise<Result> {
+  return run(planSchema, input, async ({ invoice_id, rows }, { supabase }) => {
+    const bal = await supabase.from("invoice_balances").select("balance, paid").eq("id", invoice_id).single();
+    if (bal.error) return { error: bal.error };
+    const total = Math.round(rows.reduce((s, r) => s + r.amount * 100, 0));
+    if (total > Math.round(Number(bal.data.balance) * 100) + 1) {
+      return { error: { message: `The plan adds up to R${(total / 100).toLocaleString("en-ZA")} but only R${Number(bal.data.balance).toLocaleString("en-ZA")} is still owed on this invoice.` } };
+    }
+    const old = await supabase.from("installments").select("id").eq("invoice_id", invoice_id);
+    if (old.error) return { error: /installments/.test(old.error.message) ? { message: NEEDS_0005 } : old.error };
+    const ins = await supabase.from("installments").insert(rows.map((r) => ({ invoice_id, amount: r.amount, due_on: r.due_on, paid_before: Number(bal.data.paid) })));
+    if (ins.error) return { error: ins.error };
+    if (old.data.length) {
+      const del = await supabase.from("installments").delete().in("id", old.data.map((o) => o.id));
+      if (del.error) return { error: del.error };
+    }
+    return { error: null, info: `Payment plan saved (${rows.length} payment${rows.length === 1 ? "" : "s"})` };
+  });
+}
+export async function clearPaymentPlan(invoice_id: string): Promise<Result> {
+  return run(uuid, invoice_id, (v, { supabase }) => supabase.from("installments").delete().eq("invoice_id", v));
+}
+
 export async function updateInvoice(id: string, input: z.input<typeof invoiceSchema>): Promise<Result> {
   return run(invoiceSchema.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
     const cur = await supabase.from("invoice_balances").select("paid").eq("id", id).single();

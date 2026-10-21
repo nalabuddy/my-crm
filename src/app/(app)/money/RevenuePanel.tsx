@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { fmtRand, todayISO } from "@/lib/format";
-import { chartData } from "@/lib/logic";
-import type { Client, Deal, Expense, Payment } from "@/lib/types";
+import { chartData, scheduledByMonth } from "@/lib/logic";
+import type { Client, Deal, Expense, Installment, Invoice, Payment } from "@/lib/types";
 import PastIncomeModal from "./PastIncomeModal";
 import TargetForm from "./TargetForm";
 
@@ -19,12 +19,13 @@ function ScrollBox({ focus, children }: { focus: number; children: React.ReactNo
 }
 
 /** Money received, profit (received − expenses) and projected revenue (open deals) per month, with your monthly target. */
-export default function RevenuePanel({ payments, expenses, deals, target, extrasReady, clients }: {
-  payments: Payment[]; expenses: Expense[]; deals: Deal[]; target: number; extrasReady: boolean; clients: Client[];
+export default function RevenuePanel({ payments, expenses, deals, target, extrasReady, clients, installments, invoices }: {
+  payments: Payment[]; expenses: Expense[]; deals: Deal[]; target: number; extrasReady: boolean; clients: Client[]; installments: Installment[]; invoices: Invoice[];
 }) {
   const [addingPast, setAddingPast] = useState(false);
   const { months, undated, later } = chartData({ payments, expenses, deals, target, today: todayISO() });
   const cur = months.find((m) => m.current)!;
+  const scheduled = scheduledByMonth(installments, invoices, todayISO());
   const projectedTotal = months.reduce((s, m) => s + m.projected, 0) + later + undated;
 
   // chart geometry
@@ -92,6 +93,7 @@ export default function RevenuePanel({ payments, expenses, deals, target, extras
         <p className="mt-2 text-xs text-muted">
           Received and profit use the dates you record on payments and expenses. Projected is open deals (not yet Paid) in the month each deal is due; overdue deals count in this month.
           {undated > 0 && <> {fmtRand(undated)} of open deals have no due date and {later > 0 ? `${fmtRand(later)} are due after this chart` : "are not shown"}.</>}
+          {" "}Plans due is what payment plans expect to come in each month (it is not added to Projected, so nothing is counted twice).
           {undated === 0 && later > 0 && <> {fmtRand(later)} of open deals are due after this chart.</>}
         </p>
       </div>
@@ -100,8 +102,8 @@ export default function RevenuePanel({ payments, expenses, deals, target, extras
       {addingPast && <PastIncomeModal clients={clients} onClose={() => setAddingPast(false)} />}
 
       <div className="card overflow-x-auto p-4">
-        <table className="w-full min-w-[520px] text-sm" data-testid="rev-table">
-          <thead className="text-left text-xs text-muted"><tr><th className="pb-2 font-medium">Month</th><th className="pb-2 text-right font-medium">Received</th><th className="pb-2 text-right font-medium">Expenses</th><th className="pb-2 text-right font-medium">Profit</th><th className="pb-2 text-right font-medium">Projected</th></tr></thead>
+        <table className="w-full min-w-[600px] text-sm" data-testid="rev-table">
+          <thead className="text-left text-xs text-muted"><tr><th className="pb-2 font-medium">Month</th><th className="pb-2 text-right font-medium">Received</th><th className="pb-2 text-right font-medium">Expenses</th><th className="pb-2 text-right font-medium">Profit</th><th className="pb-2 text-right font-medium">Projected</th><th className="pb-2 text-right font-medium">Plans due</th></tr></thead>
           <tbody className="divide-y divide-line tabular-nums">
             {months.map((m) => (
               <tr key={m.key} data-testid="rev-row" className={m.current ? "font-semibold" : ""}>
@@ -110,6 +112,7 @@ export default function RevenuePanel({ payments, expenses, deals, target, extras
                 <td className="py-1.5 text-right">{m.future ? "—" : fmtRand(m.expenses)}</td>
                 <td className={`py-1.5 text-right ${m.profit < 0 ? "text-bad" : ""}`}>{m.future ? "—" : fmtRand(m.profit)}</td>
                 <td className="py-1.5 text-right">{m.current || m.future ? fmtRand(m.projected) : "—"}</td>
+                <td className="py-1.5 text-right" data-testid="rev-scheduled">{(m.current || m.future) && scheduled.get(m.key) ? fmtRand(scheduled.get(m.key)) : "—"}</td>
               </tr>
             ))}
           </tbody>

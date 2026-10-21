@@ -1,5 +1,5 @@
 import { getMe, requireAuth } from "./session";
-import type { Activity, CallLead, Client, Deal, Expense, Invoice, Payment, Quote, Task } from "./types";
+import type { Activity, CallLead, Client, Deal, Expense, Installment, Invoice, Payment, Quote, Task } from "./types";
 
 /** Small two-person dataset: load everything for the screen in one go (RLS applies). */
 export async function loadAll() {
@@ -29,14 +29,18 @@ export async function loadAll() {
 /** Expenses + the monthly revenue target. Tolerates the tables not existing yet (SQL 0003 not run). */
 export async function loadMoneyExtras() {
   const { supabase } = await requireAuth();
-  const [e, t] = await Promise.all([
+  const [e, t, pl] = await Promise.all([
     supabase.from("expenses").select("id, spent_on, amount, category, note").order("spent_on", { ascending: false }),
     supabase.from("revenue_targets").select("amount").eq("month", "default").maybeSingle(),
+    supabase.from("installments").select("id, invoice_id, amount, due_on, paid_before").order("due_on", { ascending: true }),
   ]);
   return {
     expenses: (e.error ? [] : e.data) as Expense[],
     target: Number(t.data?.amount ?? 0),
     extrasReady: !e.error && !t.error,
+    // payment plans: tolerate the table not existing yet (SQL 0005 not run)
+    installments: (pl.error ? [] : pl.data).map((x) => ({ ...x, amount: Number(x.amount), paid_before: Number(x.paid_before) })) as Installment[],
+    plansReady: !pl.error,
   };
 }
 

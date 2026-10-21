@@ -229,7 +229,7 @@ test.describe.serial("expenses, profit, projected, target", () => {
     expect(await money(page, "profit-this-month")).toBe(profit0 - 1234);
 
     // target shows on the chart legend, and survives a reload
-    await page.getByLabel("Monthly revenue target (R)").fill("50000");
+    await page.getByLabel("Monthly revenue target (R)").fill("R50 000");
     await page.getByRole("button", { name: "Save target" }).click();
     await expect(page.getByText("Saved")).toBeVisible();
     await page.reload();
@@ -314,5 +314,59 @@ test.describe.serial("past income by month", () => {
     page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: "Delete" }).click();
     await expect(page).toHaveURL(/\/clients$/);
+  });
+});
+
+test.describe.serial("payment plans", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+
+  test("split an invoice into dated payments, tick them off, and refuse a plan bigger than what's owed", async ({ page }) => {
+    const label = `E2E plan ${run}`;
+    await page.goto("/money");
+    await page.getByRole("button", { name: "+ Invoice / deposit" }).click();
+    let dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Label").fill(label);
+    await dialog.getByLabel("Total amount (R)").fill("9 000");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    const card = page.getByTestId("invoice-card").filter({ hasText: label });
+    await expect(card.getByTestId("balance")).toContainText("9 000");
+
+    // 3 equal monthly payments by default
+    await card.getByRole("button", { name: "Payment plan" }).click();
+    dialog = page.getByRole("dialog");
+    await expect(dialog.getByTestId("plan-row")).toHaveCount(3);
+    await expect(dialog.getByTestId("plan-total")).toContainText("not scheduled yet R 0");
+    await dialog.getByLabel("Split into").fill("2");
+    await dialog.getByRole("button", { name: "Make equal monthly payments" }).click();
+    await expect(dialog.getByTestId("plan-row")).toHaveCount(2);
+    await expect(dialog.getByLabel("Payment 1 amount (R)")).toHaveValue("4500");
+    // a plan bigger than the balance is refused
+    await dialog.getByLabel("Payment 1 amount (R)").fill("9 500");
+    await dialog.getByRole("button", { name: "Save plan" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("only R 9 000");
+    await dialog.getByLabel("Payment 1 amount (R)").fill("4 500");
+    await dialog.getByLabel("Payment 1 date").fill("2020-01-15");   // long past, so it shows as overdue
+    await dialog.getByRole("button", { name: "Save plan" }).click();
+    await expect(card.getByTestId("plan-line")).toHaveCount(2);
+    await expect(card.getByTestId("plan-line").first()).toContainText("Overdue");
+    await expect(card.getByTestId("plan-line").last()).toContainText("Upcoming");
+
+    // paying 4 500 ticks the first one off
+    await card.getByRole("button", { name: "Record payment" }).click();
+    await dialog.getByLabel("Amount received (R)").fill("4500");
+    await dialog.getByRole("button", { name: "Record payment" }).click();
+    await expect(card.getByTestId("plan-line").first()).toContainText("Paid");
+    await expect(card.getByTestId("plan-line").last()).toContainText("Upcoming");
+
+    // the month it falls in shows on the Revenue table
+    await page.getByRole("tab", { name: "Revenue" }).click();
+    await expect(page.getByTestId("rev-scheduled").filter({ hasText: "R" }).first()).toContainText("4 500");
+
+    // clean up
+    await page.getByRole("tab", { name: "Invoices" }).click();
+    await card.getByRole("button", { name: new RegExp(label) }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    await expect(card).toHaveCount(0);
   });
 });

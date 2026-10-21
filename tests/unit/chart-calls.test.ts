@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartData, mapSheetStatus, parseCallList, sortLeads } from "@/lib/logic";
+import { addMonths, chartData, mapSheetStatus, parseCallList, planLines, scheduledByMonth, sortLeads, splitPlan } from "@/lib/logic";
 import type { CallLead, Deal, Expense, Payment } from "@/lib/types";
 
 const TODAY = "2026-10-14";
@@ -154,5 +154,41 @@ describe("sortLeads with tiers", () => {
   });
   it("Tier A before B before C, then pasted order", () => {
     expect(sortLeads([L("c1", "C"), L("a2", "A"), L("b1", "B"), L("a1", "A"), L("none", "")], TODAY).map((l) => l.id)).toEqual(["a1", "a2", "b1", "c1", "none"]);
+  });
+});
+
+describe("payment plans", () => {
+  const inst = (id: string, due_on: string, amount: number, paid_before = 0) => ({ id, invoice_id: "inv", due_on, amount, paid_before });
+  it("splits into equal monthly payments, odd cents on the last", () => {
+    expect(splitPlan(10000, 4, "2026-11-25")).toEqual([
+      { amount: 2500, due_on: "2026-11-25" }, { amount: 2500, due_on: "2026-12-25" },
+      { amount: 2500, due_on: "2027-01-25" }, { amount: 2500, due_on: "2027-02-25" },
+    ]);
+    const odd = splitPlan(100, 3, "2026-01-01");
+    expect(odd.map((r) => r.amount)).toEqual([33.33, 33.33, 33.34]);
+    expect(odd.reduce((s, r) => s + r.amount * 100, 0)).toBe(10000);
+  });
+  it("keeps month ends sensible", () => {
+    expect(addMonths("2026-01-31", 1)).toBe("2026-02-28");
+    expect(addMonths("2026-11-30", 3)).toBe("2027-02-28");
+    expect(addMonths("2026-12-15", 1)).toBe("2027-01-15");
+  });
+  it("ticks payments off in due order and flags what is late", () => {
+    const plan = [inst("c", "2026-12-20", 3000), inst("a", "2026-10-20", 3000), inst("b", "2026-11-20", 3000)];
+    const l = planLines(plan, 4000, "2026-11-25");
+    expect(l.map((x) => [x.id, x.state, x.owed])).toEqual([["a", "Paid", 0], ["b", "Overdue", 2000], ["c", "Upcoming", 3000]]);
+    expect(planLines(plan, 0, "2026-10-01").map((x) => x.state)).toEqual(["Upcoming", "Upcoming", "Upcoming"]);
+    expect(planLines(plan, 1000, "2026-10-01")[0].state).toBe("Part paid");
+  });
+  it("ignores what was already paid when the plan was made", () => {
+    const plan = [inst("a", "2026-11-20", 2500, 5000), inst("b", "2026-12-20", 2500, 5000)];
+    expect(planLines(plan, 5000, "2026-11-01").map((x) => x.state)).toEqual(["Upcoming", "Upcoming"]);
+    expect(planLines(plan, 7500, "2026-11-01").map((x) => x.state)).toEqual(["Paid", "Upcoming"]);
+  });
+  it("totals what plans expect per month, overdue counting in this month", () => {
+    const plan = [inst("a", "2026-09-20", 1000), inst("b", "2026-11-20", 2000), { ...inst("c", "2026-11-28", 500), invoice_id: "other" }];
+    const m = scheduledByMonth(plan, [{ id: "inv", paid: 0 }, { id: "other", paid: 500 }], "2026-10-21");
+    expect(m.get("2026-10")).toBe(1000);
+    expect(m.get("2026-11")).toBe(2000); // "other" is fully paid
   });
 });

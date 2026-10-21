@@ -20,10 +20,11 @@ Two-user CRM (Michael + Trevor). Next.js 15 (App Router) · TypeScript · Tailwi
    Run 0002 and 0003 **before** deploying a version that uses them; until then those tabs show a "not switched on yet" notice.
 7. **SQL Editor → New query**: paste all of `supabase/migrations/0004_lead_columns.sql` → **Run** (lead-sheet columns: allocated to, niche, tier, city, lead ID).
    Run it **before** pasting a lead sheet; plain pastes (name, phone) work without it.
-8. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
+8. **SQL Editor → New query**: paste all of `supabase/migrations/0005_payment_plans.sql` → **Run** (payment plans). Until it is run the "Payment plan" button is hidden.
+9. **SQL Editor → New query**: paste all of `supabase/seed.sql` → **Run**.
    This links the two logins to *Michael* / *Trevor* (this is what grants access) and loads the starter data
    (Mohammed, R10 500 invoice, R15 000 deposit, "Intranet" deal, six tasks). Safe to re-run.
-9. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
+10. **Project Settings → API**: copy the **Project URL** and the **anon / public** key.
    Do **not** use the `service_role` key anywhere in this app.
 
 ## 2. Run locally
@@ -62,6 +63,7 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 | Profit | money received − expenses, by month (expenses by the date spent) |
 | Projected | open deals (not Paid) by the month each deal is due; overdue open deals count in the current month; the chart shows 6 months back and 5 ahead |
 | Past income | Money → Revenue → "+ Past income": one row per amount, each booked to a month. Saved as an invoice plus a payment dated the 1st of that month (so Received and Profit pick it up), under the chosen client or a holding client called "Past income (before the CRM)" |
+| Payment plan | Money → an invoice → "Payment plan": split what is still owed into dated payments (equal monthly to start, every date/amount editable, never more than is owed). Payments received tick them off in date order, ignoring anything paid before the plan was made; late ones show Overdue. Revenue table column "Plans due" totals unpaid instalments per month (overdue ones count in the current month) and is not added to Projected |
 | Target | one monthly revenue target (Money → Revenue), drawn as a dashed line |
 | Lead sheet | Calls → Paste list accepts rows copied straight from a Google Sheet (Lead ID, Assigned To, Niche, Tier, Business Name, Category, Phone, City, Reviews, Unclaimed GBP, Also Listed As, Call Status). Tick callers under "Leave out the leads allocated to…" to skip theirs. Sheet statuses map to call results; Tier A shows first within each result group |
 | Cold calls | Calls page: paste a list (duplicates by phone number are skipped), tick No answer / Call back later / Meeting booked / Interested / Not interested. "Interested" can create a client (source "Cold call") + a "Send quote" task + a call log entry in one step |

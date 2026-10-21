@@ -5,16 +5,19 @@ import ChaseLinks from "@/components/ChaseLinks";
 import { InvoiceModal, PaymentList, PaymentModal } from "@/components/forms";
 import { Empty, ErrorText, useAct } from "@/components/ui";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
-import type { Client, Deal, Expense, Invoice, Payment, Quote } from "@/lib/types";
+import { planLines } from "@/lib/logic";
+import type { Client, Deal, Expense, Installment, Invoice, Payment, Quote } from "@/lib/types";
+import PlanModal from "./PlanModal";
 import ExpensesPanel from "./ExpensesPanel";
 import QuotesPanel from "./QuotesPanel";
 import RevenuePanel from "./RevenuePanel";
 
-export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady, expenses, target, extrasReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean; expenses: Expense[]; target: number; extrasReady: boolean }) {
+export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady, expenses, target, extrasReady, installments, plansReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean; expenses: Expense[]; target: number; extrasReady: boolean; installments: Installment[]; plansReady: boolean }) {
   const [tab, setTab] = useState<"invoices" | "quotes" | "expenses" | "revenue">("invoices");
   const [filter, setFilter] = useState<"outstanding" | "all">("outstanding");
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [editing, setEditing] = useState<Invoice | null>(null);
+  const [planning, setPlanning] = useState<Invoice | null>(null);
   const [adding, setAdding] = useState(false);
   const { act, error } = useAct();
   const today = todayISO();
@@ -36,7 +39,7 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
       </div>
       {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} />}
       {tab === "expenses" && <ExpensesPanel expenses={expenses} ready={extrasReady} />}
-      {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} clients={clients} />}
+      {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} clients={clients} installments={installments} invoices={invoices} />}
       {tab === "invoices" && (<>
       <div className="flex gap-2">
         {(["outstanding", "all"] as const).map((f) => (
@@ -48,6 +51,8 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
         <ul className="space-y-3">
           {shown.map((i) => {
             const late = i.balance > 0 && !!i.promised_date && i.promised_date < today;
+            const plan = planLines(installments.filter((x) => x.invoice_id === i.id), i.paid, today);
+            const next = plan.find((l) => l.owed > 0);
             return (
               <li key={i.id} className="card p-4" data-testid="invoice-card">
                 <div className="flex items-start justify-between gap-3">
@@ -71,16 +76,29 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
                   {i.balance > 0 && (
                     <span className="ml-auto inline-flex gap-2">
                       <ChaseLinks invoice={i} client={clients.find((c) => c.id === i.client_id)} me={me} />
+                      {plansReady && <button className="btn btn-sm" onClick={() => setPlanning(i)}>{plan.length ? "Edit plan" : "Payment plan"}</button>}
                       <button className="btn btn-primary btn-sm" onClick={() => setPaying(i)}>Record payment</button>
                     </span>
                   )}
                 </div>
+                {plan.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-line pt-3 text-sm" data-testid="plan-lines" aria-label="Payment plan">
+                    {plan.map((l) => (
+                      <li key={l.id} className="flex items-center justify-between gap-3" data-testid="plan-line">
+                        <span className={l.state === "Overdue" ? "font-medium text-bad" : "text-muted"}>{fmtDate(l.due_on)}</span>
+                        <span className="tabular-nums">{fmtRand(l.state === "Paid" ? l.amount : l.owed)}</span>
+                        <span className={`chip ${l.state === "Overdue" ? "text-bad" : l.state === "Paid" ? "text-good" : ""}`}>{l.state}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <PaymentList payments={payments.filter((p) => p.invoice_id === i.id)} />
               </li>
             );
           })}
         </ul>
       )}
+      {planning && <PlanModal invoice={planning} clientName={name(planning.client_id)} current={planLines(installments.filter((x) => x.invoice_id === planning.id), planning.paid, today)} onClose={() => setPlanning(null)} />}
       {paying && <PaymentModal invoice={paying} clientName={name(paying.client_id)} onClose={() => setPaying(null)} />}
       {editing && <InvoiceModal invoice={editing} clients={clients} onClose={() => setEditing(null)} />}
       {adding && <InvoiceModal clients={clients} onClose={() => setAdding(false)} />}
