@@ -268,3 +268,51 @@ test.describe.serial("expenses, profit, projected, target", () => {
     await expect(page.getByText("Saved")).toBeVisible();
   });
 });
+
+test.describe.serial("past income by month", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+
+  test("income logged for earlier months lands in those months, and rejects bad amounts", async ({ page }) => {
+    const monthISO = (back: number) => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - back);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    };
+    const received = async () => {
+      await page.getByRole("tab", { name: "Revenue" }).click();
+      const rows = page.getByTestId("rev-row");
+      return Promise.all([4, 5].map(async (i) => digits((await rows.nth(i).locator("td").nth(1).innerText()))));
+    };
+    await page.goto("/money");
+    const [m2a, m1a] = await received();
+
+    await page.getByRole("button", { name: "+ Past income" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Month").first().fill(monthISO(1));
+    await dialog.getByLabel("Amount (R)").first().fill("abc");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Row 1");
+
+    await dialog.getByLabel("Amount (R)").first().fill("R12,500");
+    await dialog.getByLabel("What was it for? (optional)").first().fill(`Past A ${run}`);
+    await dialog.getByRole("button", { name: "+ Add another row" }).click();
+    await dialog.getByLabel("Month").nth(1).fill(monthISO(2));
+    await dialog.getByLabel("Amount (R)").nth(1).fill("8 000");
+    await expect(dialog).toContainText("R 20 500");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await page.reload();
+    const [m2b, m1b] = await received();
+    expect(m1b).toBe(m1a + 12500);
+    expect(m2b).toBe(m2a + 8000);
+
+    // clean up: deleting the holding client removes its invoices and payments
+    await page.goto("/clients");
+    await page.getByLabel("Search clients").fill("Past income");
+    await page.getByTestId("client-row").first().click();
+    await page.getByRole("button", { name: "Edit" }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL(/\/clients$/);
+  });
+});
