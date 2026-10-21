@@ -1,6 +1,6 @@
 import { daysBetween } from "./format";
 import { waNumber } from "./chase";
-import type { Activity, CallLead, Client, Deal, Expense, Invoice, LeadOutcome, Payment, Task, Person, Stage } from "./types";
+import type { Activity, CallLead, Client, Deal, Expense, Installment, Invoice, LeadOutcome, Payment, Task, Person, Stage } from "./types";
 import { STAGES } from "./types";
 
 export const QUIET_DAYS = 14;
@@ -129,6 +129,52 @@ export function chartData(o: {
     m.profit = r2(m.received - m.expenses);
   }
   return { months, undated: r2(undated), later: r2(later) };
+}
+
+// ---------- payment plans ----------
+const cents = (n: number) => Math.round(Number(n) * 100);
+
+/** `date` plus `n` months, keeping the day where it exists (31 Jan + 1 month = 28/29 Feb). */
+export function addMonths(date: string, n: number): string {
+  const y = +date.slice(0, 4), m = +date.slice(5, 7) - 1, d = +date.slice(8, 10);
+  const t = y * 12 + m + n, ny = Math.floor(t / 12), nm = t % 12;
+  const last = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
+}
+
+/** `count` equal payments of `total`, one a month from `firstDue`; the last one takes any odd cents. */
+export function splitPlan(total: number, count: number, firstDue: string): { amount: number; due_on: string }[] {
+  const n = Math.max(1, Math.floor(count)), all = cents(total), base = Math.floor(all / n);
+  return Array.from({ length: n }, (_, i) => ({ amount: (i === n - 1 ? all - base * (n - 1) : base) / 100, due_on: addMonths(firstDue, i) }));
+}
+
+export type PlanState = "Paid" | "Part paid" | "Overdue" | "Upcoming";
+export type PlanLine = Installment & { state: PlanState; owed: number };
+
+/** Each instalment in due order, ticked off by what has been paid on the invoice since the plan was made. */
+export function planLines(plan: Installment[], paidNow: number, today: string): PlanLine[] {
+  const sorted = [...plan].sort((a, b) => a.due_on.localeCompare(b.due_on) || a.id.localeCompare(b.id));
+  let pool = Math.max(0, cents(paidNow) - cents(sorted[0]?.paid_before ?? 0));
+  return sorted.map((p) => {
+    const covered = Math.min(cents(p.amount), pool); pool -= covered;
+    const owed = (cents(p.amount) - covered) / 100;
+    const state: PlanState = owed === 0 ? "Paid" : p.due_on < today ? "Overdue" : covered > 0 ? "Part paid" : "Upcoming";
+    return { ...p, amount: Number(p.amount), owed, state };
+  });
+}
+
+/** Unpaid instalments by month (YYYY-MM); anything already overdue counts in the current month. */
+export function scheduledByMonth(plans: Installment[], invoices: Pick<Invoice, "id" | "paid">[], today: string): Map<string, number> {
+  const out = new Map<string, number>(), cur = today.slice(0, 7);
+  for (const inv of invoices) {
+    const lines = planLines(plans.filter((p) => p.invoice_id === inv.id), inv.paid, today);
+    for (const l of lines) {
+      if (l.owed <= 0) continue;
+      const k = l.due_on.slice(0, 7) < cur ? cur : l.due_on.slice(0, 7);
+      out.set(k, r2((out.get(k) ?? 0) + l.owed));
+    }
+  }
+  return out;
 }
 
 // ---------- cold call list ----------

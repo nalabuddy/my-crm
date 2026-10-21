@@ -46,3 +46,19 @@ insert into call_leads (business) values ('Plain Co');
 select business, assigned_to, niche, tier, city, lead_code from call_leads where business in ('Sheet Co','Plain Co') order by business desc;
 savepoint z; insert into call_leads (business, tier) values ('Bad Tier', 'Z'); rollback to z;
 rollback;
+
+-- migration 0005: payment plans
+\echo '--- 0005: a team member can plan an invoice; a stranger sees nothing; anonymous denied; deleting the invoice removes the plan'
+select id as m5 from auth.users where email='michaelvaneck11@gmail.com' \gset
+select id as inv5 from invoices limit 1 \gset
+begin; set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'m5', 'role', 'authenticated')::text, true) \gset
+insert into installments (invoice_id, amount, due_on, paid_before) values (:'inv5', 100, '2026-12-01', 0);
+select count(*) as rows_for_team from installments;
+savepoint z; insert into installments (invoice_id, amount, due_on) values (:'inv5', 0, '2026-12-01'); rollback to z;
+rollback;
+begin; set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'sid', 'role', 'authenticated')::text, true) \gset
+select count(*) as rows_for_stranger from installments;
+rollback;
+begin; set local role anon; select count(*) from installments; rollback;
