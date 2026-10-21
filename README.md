@@ -61,6 +61,7 @@ The anon/publishable key is visible in the browser by design. Login plus RLS is 
 | Revenue | money actually **received** (payments), by the month of the received date |
 | Profit | money received − expenses, by month (expenses by the date spent) |
 | Projected | open deals (not Paid) by the month each deal is due; overdue open deals count in the current month; the chart shows 6 months back and 5 ahead |
+| Past income | Money → Revenue → "+ Past income": one row per amount, each booked to a month. Saved as an invoice plus a payment dated the 1st of that month (so Received and Profit pick it up), under the chosen client or a holding client called "Past income (before the CRM)" |
 | Target | one monthly revenue target (Money → Revenue), drawn as a dashed line |
 | Lead sheet | Calls → Paste list accepts rows copied straight from a Google Sheet (Lead ID, Assigned To, Niche, Tier, Business Name, Category, Phone, City, Reviews, Unclaimed GBP, Also Listed As, Call Status). Tick callers under "Leave out the leads allocated to…" to skip theirs. Sheet statuses map to call results; Tier A shows first within each result group |
 | Cold calls | Calls page: paste a list (duplicates by phone number are skipped), tick No answer / Call back later / Meeting booked / Interested / Not interested. "Interested" can create a client (source "Cold call") + a "Send quote" task + a call log entry in one step |

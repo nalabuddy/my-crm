@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtRand, todayISO } from "@/lib/format";
 import { chartData } from "@/lib/logic";
-import type { Deal, Expense, Payment } from "@/lib/types";
+import type { Client, Deal, Expense, Payment } from "@/lib/types";
+import PastIncomeModal from "./PastIncomeModal";
 import TargetForm from "./TargetForm";
 
 const short = (v: number) => (Math.abs(v) >= 1000 ? `${+(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : String(Math.round(v)));
@@ -18,9 +19,10 @@ function ScrollBox({ focus, children }: { focus: number; children: React.ReactNo
 }
 
 /** Money received, profit (received − expenses) and projected revenue (open deals) per month, with your monthly target. */
-export default function RevenuePanel({ payments, expenses, deals, target, extrasReady }: {
-  payments: Payment[]; expenses: Expense[]; deals: Deal[]; target: number; extrasReady: boolean;
+export default function RevenuePanel({ payments, expenses, deals, target, extrasReady, clients }: {
+  payments: Payment[]; expenses: Expense[]; deals: Deal[]; target: number; extrasReady: boolean; clients: Client[];
 }) {
+  const [addingPast, setAddingPast] = useState(false);
   const { months, undated, later } = chartData({ payments, expenses, deals, target, today: todayISO() });
   const cur = months.find((m) => m.current)!;
   const projectedTotal = months.reduce((s, m) => s + m.projected, 0) + later + undated;
@@ -41,6 +43,10 @@ export default function RevenuePanel({ payments, expenses, deals, target, extras
   return (
     <div className="space-y-4" data-testid="revenue">
       {!extrasReady && <p className="card p-3 text-sm" role="alert">Profit and the target need <code>supabase/migrations/0003_calls_expenses.sql</code> run in Supabase. Until then profit equals money received.</p>}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">Income you already received before using the CRM can be added by month.</p>
+        <button className="btn btn-primary shrink-0" onClick={() => setAddingPast(true)}>+ Past income</button>
+      </div>
       <div className="grid grid-cols-3 gap-3">
         {[["Received this month", cur.received, "rev-this-month"], ["Profit this month", cur.profit, "profit-this-month"], ["Projected (open deals)", projectedTotal, "projected-total"]].map(([label, v, id]) => (
           <div key={label as string} className="card p-3">
@@ -91,6 +97,7 @@ export default function RevenuePanel({ payments, expenses, deals, target, extras
       </div>
 
       <div className="card p-4"><TargetForm target={target} /></div>
+      {addingPast && <PastIncomeModal clients={clients} onClose={() => setAddingPast(false)} />}
 
       <div className="card overflow-x-auto p-4">
         <table className="w-full min-w-[520px] text-sm" data-testid="rev-table">

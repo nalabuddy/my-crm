@@ -36,7 +36,7 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
       </div>
       {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} />}
       {tab === "expenses" && <ExpensesPanel expenses={expenses} ready={extrasReady} />}
-      {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} />}
+      {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} clients={clients} />}
       {tab === "invoices" && (<>
       <div className="flex gap-2">
         {(["outstanding", "all"] as const).map((f) => (

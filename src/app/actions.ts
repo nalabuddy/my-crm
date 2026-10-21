@@ -137,6 +137,41 @@ export async function addInvoice(input: z.input<typeof invoiceSchema> & { paid?:
     return { error: null, id: ins.data.id };
   });
 }
+const PAST_CLIENT = "Past income (before the CRM)";
+const pastIncomeSchema = z.object({
+  rows: z.array(z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Pick a month for every row"),
+    amount: money.refine((n) => n > 0, "Amount must be more than 0"),
+    note: z.string().trim().default(""),
+    client_id: optUuid,
+  })).min(1, "Add at least one row").max(60),
+});
+/** Past money received, each row booked to a month: an invoice plus a payment dated in that month (so Revenue and Profit pick it up). */
+export async function addPastIncome(input: { rows: { month: string; amount: number | string; note?: string; client_id?: string | null }[] }): Promise<Result> {
+  return run(pastIncomeSchema, input, async ({ rows }, { supabase }) => {
+    let fallback: string | null = null;
+    if (rows.some((r) => !r.client_id)) {
+      const found = await supabase.from("clients").select("id").eq("name", PAST_CLIENT).limit(1);
+      if (found.error) return { error: found.error };
+      fallback = found.data?.[0]?.id ?? null;
+      if (!fallback) {
+        const made = await supabase.from("clients").insert({ name: PAST_CLIENT, status: "Past", source: "Other", notes: "Holds income logged by month from before the CRM." }).select("id").single();
+        if (made.error || !made.data) return { error: made.error ?? { message: "Could not create the holding client" } };
+        fallback = made.data.id;
+      }
+    }
+    const created: string[] = [];
+    for (const r of rows) {
+      const label = r.note || `Income ${r.month}`;
+      const inv = await supabase.from("invoices").insert({ client_id: r.client_id ?? fallback, label, kind: "Invoice", amount: r.amount, notes: "Past income" }).select("id").single();
+      if (inv.error || !inv.data) { if (created.length) await supabase.from("invoices").delete().in("id", created); return { error: inv.error ?? { message: "Could not save" } }; }
+      created.push(inv.data.id);
+      const pay = await supabase.from("payments").insert({ invoice_id: inv.data.id, amount: r.amount, received_on: `${r.month}-01` });
+      if (pay.error) { await supabase.from("invoices").delete().in("id", created); return { error: pay.error }; }
+    }
+    return { error: null, info: `Added ${rows.length} month${rows.length === 1 ? "" : "s"} of income` };
+  });
+}
 export async function updateInvoice(id: string, input: z.input<typeof invoiceSchema>): Promise<Result> {
   return run(invoiceSchema.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
     const cur = await supabase.from("invoice_balances").select("paid").eq("id", id).single();
