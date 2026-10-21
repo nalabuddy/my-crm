@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_LEAD_MESSAGE, isMobile, leadMessage, whatsappUrl } from "@/lib/chase";
 import { addMonths, chartData, mapSheetStatus, parseCallList, planLines, scheduledByMonth, sortLeads, splitPlan } from "@/lib/logic";
 import type { CallLead, Deal, Expense, Payment } from "@/lib/types";
 
@@ -190,5 +191,17 @@ describe("payment plans", () => {
     const m = scheduledByMonth(plan, [{ id: "inv", paid: 0 }, { id: "other", paid: 500 }], "2026-10-21");
     expect(m.get("2026-10")).toBe(1000);
     expect(m.get("2026-11")).toBe(2000); // "other" is fully paid
+  });
+});
+
+describe("WhatsApp for the call list", () => {
+  it("only offers WhatsApp for mobile numbers", () => {
+    for (const ok of ["082 123 4567", "+27 82 123 4567", "0721234567", "+27 63 740 6866", "27 78 069 8038"]) expect(isMobile(ok), ok).toBe(true);
+    for (const no of ["041 581 2292", "+27 41 452 1087", "011 555 0102", "+27 10 110 0549", "", "+27 71303930"]) expect(isMobile(no), no).toBe(false);
+  });
+  it("fills the business and your name into the message", () => {
+    expect(leadMessage("Hi {business}, it's {me}. {Business} again", { business: "Acme & Sons", me: "Michael" })).toBe("Hi Acme & Sons, it's Michael. Acme & Sons again");
+    expect(leadMessage(DEFAULT_LEAD_MESSAGE, { business: "Blue Dental", me: "Trevor" })).toContain("Trevor from Next Level Web Solutions");
+    expect(whatsappUrl("082 123 4567", leadMessage("Hi {business}", { business: "A & B", me: "x" }))).toBe("https://wa.me/27821234567?text=Hi%20A%20%26%20B");
   });
 });

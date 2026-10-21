@@ -370,3 +370,49 @@ test.describe.serial("payment plans", () => {
     await expect(card).toHaveCount(0);
   });
 });
+
+test.describe.serial("whatsapp from the call list", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+
+  test("mobile leads get a WhatsApp link with the message ready; landlines don't; the message can be changed", async ({ page }) => {
+    const mob = `WA Mobile ${run}`, land = `WA Landline ${run}`;
+    await page.goto("/calls");
+    await page.getByRole("button", { name: "Paste list" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Call list").fill(`${mob}\t082 ${n} 777\n${land}\t041 ${n} 888`);
+    await dialog.getByRole("button", { name: /^Add 2/ }).click();
+    await expect(page.getByTestId("notice")).toContainText("Added 2");
+    await page.getByRole("button", { name: /^All \(/ }).click();
+    await page.getByLabel("Search the call list").fill(run);
+
+    const mobCard = lead(page, mob), landCard = lead(page, land);
+    const href = await mobCard.getByTestId("lead-whatsapp").getAttribute("href");
+    expect(href).toContain(`https://wa.me/2782${n}777?text=`);
+    expect(decodeURIComponent(href!)).toContain(`quick idea for ${mob}?`);
+    await expect(landCard.getByTestId("lead-whatsapp")).toHaveCount(0);
+    await expect(landCard.getByTestId("lead-landline")).toBeVisible();
+
+    // change the message; it is used straight away and remembered after a reload
+    await page.getByRole("button", { name: "WhatsApp message" }).click();
+    await dialog.getByLabel("Message").fill("Howzit {business}, {me} here!");
+    await expect(dialog.getByTestId("message-preview")).toContainText("Howzit Acme Plumbing");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await page.getByLabel("Search the call list").fill(run);
+    expect(decodeURIComponent((await mobCard.getByTestId("lead-whatsapp").getAttribute("href"))!)).toContain(`Howzit ${mob}, `);
+    await page.reload();
+    await page.getByRole("button", { name: /^All \(/ }).click();
+    await page.getByLabel("Search the call list").fill(run);
+    expect(decodeURIComponent((await lead(page, mob).getByTestId("lead-whatsapp").getAttribute("href"))!)).toContain(`Howzit ${mob}, `);
+
+    // clean up: put the standard message back and remove the leads
+    await page.getByRole("button", { name: "WhatsApp message" }).click();
+    await dialog.getByRole("button", { name: "Reset to the standard message" }).click();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    for (const name of [mob, land]) {
+      await lead(page, name).getByRole("button", { name }).click();
+      page.once("dialog", (d) => d.accept());
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(lead(page, name)).toHaveCount(0);
+    }
+  });
+});

@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { convertLead, setLeadOutcome } from "@/app/actions";
 import { LeadModal, PasteLeadsModal } from "@/components/callforms";
 import { Empty, ErrorText, Modal, useAct } from "@/components/ui";
+import { DEFAULT_LEAD_MESSAGE, isMobile, leadMessage, whatsappUrl } from "@/lib/chase";
 import { fmtDate, todayISO } from "@/lib/format";
 import { sortLeads } from "@/lib/logic";
 import type { CallLead, LeadOutcome } from "@/lib/types";
@@ -42,7 +43,32 @@ function CallbackModal({ lead, onClose }: { lead: CallLead; onClose: () => void 
   );
 }
 
-export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: boolean }) {
+const MSG_KEY = "nlws-lead-message";
+
+/** The first message you send to a lead. Saved on this phone/browser only; {business} and {me} are filled in per lead. */
+function MessageModal({ template, me, onSave, onClose }: { template: string; me: string; onSave: (t: string) => void; onClose: () => void }) {
+  const [t, setT] = useState(template);
+  return (
+    <Modal title="WhatsApp message" onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSave(t.trim() || DEFAULT_LEAD_MESSAGE); onClose(); }}>
+        <label className="block"><span className="label">Message</span>
+          <textarea className="input min-h-32" value={t} onChange={(e) => setT(e.target.value)} /></label>
+        <p className="text-xs text-muted">Write <code>{"{business}"}</code> where the business name goes and <code>{"{me}"}</code> for your name. Saved on this device only.</p>
+        <p className="rounded-lg border border-line p-3 text-sm" data-testid="message-preview">{leadMessage(t, { business: "Acme Plumbing", me: me || "Michael" })}</p>
+        <div className="flex justify-between gap-2">
+          <button type="button" className="btn btn-sm" onClick={() => setT(DEFAULT_LEAD_MESSAGE)}>Reset to the standard message</button>
+          <button className="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+export default function CallsView({ leads, ready, me }: { leads: CallLead[]; ready: boolean; me: string }) {
+  const [template, setTemplate] = useState(DEFAULT_LEAD_MESSAGE);
+  const [editingMsg, setEditingMsg] = useState(false);
+  useEffect(() => { try { const v = localStorage.getItem(MSG_KEY); if (v) setTemplate(v); } catch { /* private mode: keep the standard message */ } }, []);
+  const saveTemplate = (t: string) => { setTemplate(t); try { localStorage.setItem(MSG_KEY, t); } catch { /* not saved, still used this session */ } };
   const today = todayISO();
   const [filter, setFilter] = useState<Filter>("todo");
   const [q, setQ] = useState("");
@@ -97,6 +123,7 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
         <h1 className="text-xl font-bold">Calls</h1>
         <div className="flex gap-2">
           <button className="btn" onClick={() => setAdding(true)}>+ Add</button>
+          <button className="btn" onClick={() => setEditingMsg(true)}>WhatsApp message</button>
           <button className="btn btn-primary" onClick={() => setPasting(true)}>Paste list</button>
         </div>
       </div>
@@ -153,6 +180,9 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
               )}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 {l.phone ? <a className="text-accent" href={`tel:${l.phone.replace(/[^\d+]/g, "")}`}>{l.phone}</a> : <span className="text-muted">No number</span>}
+                {l.phone && (isMobile(l.phone)
+                  ? <a className="btn btn-sm" href={whatsappUrl(l.phone, leadMessage(template, { business: l.business, me }))} target="_blank" rel="noopener noreferrer" data-testid="lead-whatsapp">WhatsApp</a>
+                  : <span className="text-xs text-muted" data-testid="lead-landline">Landline: no WhatsApp</span>)}
                 {l.attempts > 0 && <span className="text-xs text-muted">Called {l.attempts}×{l.last_called_on ? ` · last ${fmtDate(l.last_called_on)}` : ""}{l.called_by ? ` by ${l.called_by}` : ""}</span>}
               </div>
               {l.notes && <p className="mt-1 whitespace-pre-wrap text-xs text-muted">{l.notes}</p>}
@@ -187,6 +217,7 @@ export default function CallsView({ leads, ready }: { leads: CallLead[]; ready: 
       {pasting && <PasteLeadsModal onClose={() => setPasting(false)} onDone={(i) => setNotice(i ?? null)} />}
       {adding && <LeadModal onClose={() => setAdding(false)} />}
       {editing && <LeadModal lead={editing} onClose={() => setEditing(null)} />}
+      {editingMsg && <MessageModal template={template} me={me} onSave={saveTemplate} onClose={() => setEditingMsg(false)} />}
       {callback && <CallbackModal lead={callback} onClose={() => setCallback(null)} />}
     </div>
   );
