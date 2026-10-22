@@ -12,8 +12,8 @@ const Lines = ({ label, value, onChange, rows = 4, hint }: { label: string; valu
 );
 
 /** Add or edit a quote, including the wording that is printed on the quote document. */
-export function QuoteModal({ quote, clients, deals, business, docsReady, onClose }: {
-  quote?: Quote; clients: Client[]; deals: Deal[]; business: Business; docsReady: boolean; onClose: () => void;
+export function QuoteModal({ quote, clients, deals, business, docsReady, earlier = [], onClose }: {
+  quote?: Quote; clients: Client[]; deals: Deal[]; business: Business; docsReady: boolean; earlier?: Quote[]; onClose: () => void;
 }) {
   const { act, pending, error, setError } = useAct();
   const d0: QuoteDoc = quote ? readDoc(quote.doc) : business.defaults;
@@ -32,6 +32,18 @@ export function QuoteModal({ quote, clients, deals, business, docsReady, onClose
   const [opts, setOpts] = useState<OptRow[]>(d0.options.map((o) => ({ name: o.name, price: String(o.price), note: o.note })));
   const [chosen, setChosen] = useState(d0.chosen);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
+  const copyable = earlier.filter((q) => q.number);
+  /** Start from an earlier quote: copies its wording and price options (not the client, status or dates). */
+  function copyFrom(id: string) {
+    const src = earlier.find((q) => q.id === id);
+    if (!src) return;
+    const d = readDoc(src.doc);
+    setProject(d.project); setIncluded(fromLines(d.included)); setNotIncluded(fromLines(d.not_included)); setNeeds(fromLines(d.needs));
+    setExtras(fromLines(d.extras)); setTerms(fromLines(d.terms)); setTimeline(d.timeline); setValidDays(String(d.valid_days));
+    setOpts(d.options.map((o) => ({ name: o.name, price: String(o.price), note: o.note }))); setChosen(d.chosen);
+    if (!d.options.length) set("amount", String(src.amount));
+    if (!f.label.trim()) set("label", src.label);
+  }
   const setOpt = (i: number, k: keyof OptRow, v: string) => setOpts((p) => p.map((o, j) => (j === i ? { ...o, [k]: v } : o)));
   const clientDeals = deals.filter((d) => d.client_id === f.client_id);
   const optPrices = opts.map((o) => parseMoney(o.price));
@@ -77,6 +89,14 @@ export function QuoteModal({ quote, clients, deals, business, docsReady, onClose
           <details className="rounded-lg border border-line p-3" open={!quote}>
             <summary className="cursor-pointer text-sm font-semibold">What the printed quote says</summary>
             <div className="mt-3 space-y-3">
+              {!quote && copyable.length > 0 && (
+                <Field label="Start from an earlier quote">
+                  <select className="input" defaultValue="" onChange={(e) => copyFrom(e.target.value)}>
+                    <option value="">— the standard wording —</option>
+                    {copyable.map((q) => <option key={q.id} value={q.id}>{q.number} · {q.label}</option>)}
+                  </select>
+                </Field>
+              )}
               <Field label="Project"><textarea className="input py-2" rows={2} placeholder="One or two sentences about what you will build" value={project} onChange={(e) => setProject(e.target.value)} /></Field>
               <Lines label="What’s included" value={included} onChange={setIncluded} hint="One item per line." />
               <Lines label="Not included" value={notIncluded} onChange={setNotIncluded} rows={3} />

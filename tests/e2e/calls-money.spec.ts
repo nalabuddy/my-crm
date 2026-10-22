@@ -473,12 +473,29 @@ test.describe.serial("printable quote", () => {
     await expect(doc).toContainText("50% on launch");
     await expect(page.getByRole("button", { name: "Download / print PDF" })).toBeVisible();
 
-    // clean up
+    // a second quote for someone else starts from the first one's wording and can change the prices
     await page.getByRole("link", { name: /Back to Money/ }).click();
     await page.getByRole("tab", { name: "Quotes" }).click();
-    await card.getByRole("button", { name: new RegExp(label) }).click();
-    page.once("dialog", (d) => d.accept());
-    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-    await expect(card).toHaveCount(0);
+    const label2 = `E2E copy ${run}`;
+    await page.getByRole("button", { name: "+ Quote" }).click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByLabel("What is it for?").fill(label2);
+    const earlier = dialog.getByLabel("Start from an earlier quote");
+    await earlier.selectOption((await earlier.locator("option", { hasText: label }).getAttribute("value"))!);
+    await expect(dialog.getByLabel("Project")).toHaveValue("A site for the guesthouse");
+    await expect(dialog.getByTestId("option-row")).toHaveCount(2);
+    await dialog.getByLabel("Option 2 price (R)").fill("6 000");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    const card2 = page.getByTestId("quote-card").filter({ hasText: label2 });
+    await expect(card2).toContainText("6\u00A0000");
+    await expect(card2).toContainText("-5001");   // numbers keep counting up
+
+    // clean up
+    for (const [c, l] of [[card2, label2], [card, label]] as const) {
+      await c.getByRole("button", { name: new RegExp(l) }).click();
+      page.once("dialog", (d) => d.accept());
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(c).toHaveCount(0);
+    }
   });
 });

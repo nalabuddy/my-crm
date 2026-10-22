@@ -73,7 +73,7 @@ export default function QuotesPanel({ quotes, clients, deals, ready, business, d
           ))}
         </ul>
       )}
-      {adding && <QuoteModal clients={clients} deals={deals} business={business} docsReady={docsReady} onClose={() => setAdding(false)} />}
+      {adding && <QuoteModal clients={clients} deals={deals} business={business} docsReady={docsReady} earlier={quotes} onClose={() => setAdding(false)} />}
       {editing && <QuoteModal quote={editing} clients={clients} deals={deals} business={business} docsReady={docsReady} onClose={() => setEditing(null)} />}
       {settings && <BusinessModal business={business} onClose={() => setSettings(false)} />}
       {converting && <MakeInvoiceModal quote={converting} clientName={name(converting.client_id)} onClose={() => setConverting(null)} />}
