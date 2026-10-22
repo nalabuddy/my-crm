@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fromLines, nextQuoteNumber, readBusiness, readDoc, toLines } from "@/lib/quotedoc";
 import { DEFAULT_LEAD_MESSAGE, isMobile, leadMessage, whatsappUrl } from "@/lib/chase";
 import { addMonths, chartData, mapSheetStatus, parseCallList, planLines, scheduledByMonth, sortLeads, splitPlan } from "@/lib/logic";
 import type { CallLead, Deal, Expense, Payment } from "@/lib/types";
@@ -203,5 +204,32 @@ describe("WhatsApp for the call list", () => {
     expect(leadMessage("Hi {business}, it's {me}. {Business} again", { business: "Acme & Sons", me: "Michael" })).toBe("Hi Acme & Sons, it's Michael. Acme & Sons again");
     expect(leadMessage(DEFAULT_LEAD_MESSAGE, { business: "Blue Dental", me: "Trevor" })).toContain("Trevor from Next Level Web Solutions");
     expect(whatsappUrl("082 123 4567", leadMessage("Hi {business}", { business: "A & B", me: "x" }))).toBe("https://wa.me/27821234567?text=Hi%20A%20%26%20B");
+  });
+});
+
+describe("printable quote helpers", () => {
+  it("numbers quotes PREFIX-YEAR-N, continuing after the highest used this year", () => {
+    expect(nextQuoteNumber("NLWS", 2026, [], 1001)).toBe("NLWS-2026-1001");
+    expect(nextQuoteNumber("NLWS", 2026, ["NLWS-2026-1021", "NLWS-2026-1003", "NLWS-2025-5000", "OTHER-2026-9999", ""], 1001)).toBe("NLWS-2026-1022");
+    expect(nextQuoteNumber("NLWS", 2026, ["NLWS-2026-1005"], 1022)).toBe("NLWS-2026-1022");   // starting number wins when it is higher
+    expect(nextQuoteNumber("A.B", 2026, ["A.B-2026-7", "AxB-2026-50"], 1)).toBe("A.B-2026-8"); // prefix is matched literally
+  });
+  it("reads stored wording safely, whatever is in there", () => {
+    expect(readDoc(null)).toMatchObject({ included: [], options: [], valid_days: 14, chosen: 0 });
+    const d = readDoc({ included: [" a ", "", "b"], options: [{ name: "A", price: "7500" }, { name: " " }, { name: "B", price: 7000, note: "n" }], chosen: 9, valid_days: "0" });
+    expect(d.included).toEqual(["a", "b"]);
+    expect(d.options).toEqual([{ name: "A", price: 7500, note: "" }, { name: "B", price: 7000, note: "n" }]);
+    expect(d.chosen).toBe(1);        // clamped to a real option
+    expect(d.valid_days).toBe(14);   // zero is not a valid number of days
+  });
+  it("reads business details with sensible fallbacks", () => {
+    const b = readBusiness({ name: " Acme ", next_number: "1022", defaults: { terms: ["50% deposit"] } });
+    expect(b).toMatchObject({ name: "Acme", prefix: "QUO", next_number: 1022 });
+    expect(b.defaults.terms).toEqual(["50% deposit"]);
+    expect(readBusiness(undefined).next_number).toBe(1001);
+  });
+  it("turns a text box into list items and back", () => {
+    expect(toLines(" one \n\n two\n")).toEqual(["one", "two"]);
+    expect(fromLines(["one", "two"])).toBe("one\ntwo");
   });
 });

@@ -416,3 +416,69 @@ test.describe.serial("whatsapp from the call list", () => {
     }
   });
 });
+
+test.describe.serial("printable quote", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+
+  test("business details + options on a quote show up on the printable page, with the banking reference", async ({ page }) => {
+    const label = `E2E doc ${run}`;
+    await page.goto("/money");
+    await page.getByRole("tab", { name: "Quotes" }).click();
+
+    // business details, once
+    await page.getByRole("button", { name: "Quote settings" }).click();
+    let dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Business name").fill("E2E WEB SOLUTIONS");
+    await dialog.getByLabel("Contact line").fill("Tester | test@example.com");
+    await dialog.getByLabel("Quote prefix").fill("E2E");
+    await dialog.getByLabel("Next quote number").fill("5000");
+    await dialog.getByLabel("Account number").fill("1234567890");
+    await dialog.getByLabel("Payment terms").fill("50% deposit\n50% on launch");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // a quote with two price options
+    await page.getByRole("button", { name: "+ Quote" }).click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByLabel("What is it for?").fill(label);
+    await expect(dialog.getByLabel("Payment terms")).toHaveValue("50% deposit\n50% on launch"); // standard wording is copied in
+    await dialog.getByLabel("Project").fill("A site for the guesthouse");
+    await dialog.getByRole("button", { name: "+ Add a price option" }).click();
+    await dialog.getByLabel("Option 1 name").fill("Option A");
+    await dialog.getByLabel("Option 1 price (R)").fill("7 500");
+    await dialog.getByRole("button", { name: "+ Add a price option" }).click();
+    await dialog.getByLabel("Option 2 price (R)").fill("R7,000");
+    await dialog.getByLabel("Option 2 note").fill("In exchange for a testimonial");
+    await dialog.getByLabel("This is the price the invoice will use").nth(1).check();
+    await expect(dialog.getByLabel("Quoted amount (R)")).toHaveValue(/7 000/);
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    const card = page.getByTestId("quote-card").filter({ hasText: label });
+    await expect(card).toContainText("E2E-");
+    await expect(card).toContainText("-5000");
+    await expect(card).toContainText("7 000");
+
+    // the printable page
+    await card.getByTestId("quote-view").click();
+    await expect(page).toHaveURL(/\/quote\/[0-9a-f-]{36}$/);
+    const doc = page.getByTestId("quote-doc");
+    await expect(doc.getByTestId("doc-business")).toHaveText(/E2E WEB SOLUTIONS/i);
+    await expect(doc.getByTestId("doc-number")).toHaveText(/^E2E-\d{4}-5000$/);
+    await expect(doc.getByTestId("doc-option")).toHaveCount(2);
+    await expect(doc.getByTestId("doc-options")).toContainText("R 7 500");
+    await expect(doc.getByTestId("doc-options")).toContainText("R 7 000");
+    await expect(doc.getByTestId("doc-options")).toContainText("In exchange for a testimonial");
+    await expect(doc.getByTestId("doc-bank")).toContainText("1234567890");
+    await expect(doc.getByTestId("doc-bank")).toContainText(/E2E-\d{4}-5000/);   // the banking reference is the quote number
+    await expect(doc).toContainText("50% on launch");
+    await expect(page.getByRole("button", { name: "Download / print PDF" })).toBeVisible();
+
+    // clean up
+    await page.getByRole("link", { name: /Back to Money/ }).click();
+    await page.getByRole("tab", { name: "Quotes" }).click();
+    await card.getByRole("button", { name: new RegExp(label) }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    await expect(card).toHaveCount(0);
+  });
+});

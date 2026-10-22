@@ -62,3 +62,21 @@ select set_config('request.jwt.claims', json_build_object('sub', :'sid', 'role',
 select count(*) as rows_for_stranger from installments;
 rollback;
 begin; set local role anon; select count(*) from installments; rollback;
+
+-- migration 0006: quote documents + settings
+\echo '--- 0006: team can save settings and quote wording; quote numbers unique; stranger and anon see nothing'
+select id as m6 from auth.users where email='michaelvaneck11@gmail.com' \gset
+select id as c6 from clients limit 1 \gset
+begin; set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'m6', 'role', 'authenticated')::text, true) \gset
+insert into settings (key, value) values ('business', '{"name":"X"}');
+insert into quotes (client_id, label, amount, number, doc) values (:'c6', 'Doc quote', 100, 'T-2026-1', '{"project":"p"}');
+savepoint z; insert into quotes (client_id, label, amount, number) values (:'c6', 'Dup number', 100, 'T-2026-1'); rollback to z;
+insert into quotes (client_id, label, amount) values (:'c6', 'No number 1', 100), (:'c6', 'No number 2', 100);
+select count(*) as quotes_ok from quotes where label like 'No number%' or label = 'Doc quote';
+rollback;
+begin; set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'sid', 'role', 'authenticated')::text, true) \gset
+select count(*) as settings_for_stranger from settings;
+rollback;
+begin; set local role anon; select count(*) from settings; rollback;

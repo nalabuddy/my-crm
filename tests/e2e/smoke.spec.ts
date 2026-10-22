@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // These need no credentials: they prove the app is locked down.
-for (const path of ["/", "/tasks", "/clients", "/pipeline", "/money"]) {
+for (const path of ["/", "/tasks", "/clients", "/pipeline", "/money", "/quote/00000000-0000-0000-0000-000000000000"]) {
   test(`logged-out ${path} redirects to /login`, async ({ page }) => {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);

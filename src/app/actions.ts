@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/format";
 import { phoneKey } from "@/lib/logic";
+import { nextQuoteNumber, readBusiness, readDoc } from "@/lib/quotedoc";
 import { getMe, requireAuth } from "@/lib/session";
 import {
   ACTIVITY_TYPES, INVOICE_KINDS, LEAD_OUTCOMES, OWNERS, PRIORITIES, QUOTE_STATUSES, SOURCES, STAGES, STATUSES,
@@ -244,21 +245,43 @@ export async function deletePayment(id: string): Promise<Result> {
 }
 
 // ---------- quotes ----------
+const textLines = z.array(z.string().max(300)).max(40).default([]);
+const docSchema = z.object({
+  project: z.string().max(2000).default(""), included: textLines, not_included: textLines, needs: textLines,
+  options: z.array(z.object({ name: z.string().trim().max(120), price: money, note: z.string().max(300).default("") })).max(6).default([]),
+  chosen: z.coerce.number().int().min(0).default(0), extras: textLines, terms: textLines,
+  timeline: z.string().max(1000).default(""), valid_days: z.coerce.number().int().min(1).max(365).default(14),
+});
 const quoteSchema = z.object({
   client_id: uuid, deal_id: optUuid, label: z.string().trim().min(1, "Describe the quote"),
   amount: money.refine((n) => n > 0, "Amount must be more than 0"),
   status: z.enum(QUOTE_STATUSES), sent_on: date, notes: z.string().default(""),
+  doc: docSchema.optional(),
 });
+type Db = Awaited<ReturnType<typeof requireAuth>>["supabase"];
+/** Next free quote number for this year, from your business settings (prefix, starting number). */
+async function newQuoteNumber(supabase: Db): Promise<string> {
+  const [b, q] = await Promise.all([supabase.from("settings").select("value").eq("key", "business").maybeSingle(), supabase.from("quotes").select("number")]);
+  const biz = readBusiness(b.data?.value);
+  const year = Number(todayISO().slice(0, 4));
+  return nextQuoteNumber(biz.prefix, year, (q.data ?? []).map((r) => String((r as { number?: string }).number ?? "")), biz.next_number);
+}
 export async function addQuote(input: z.input<typeof quoteSchema>): Promise<Result> {
-  return run(quoteSchema, input, async (v, { supabase }) => {
-    const r = await supabase.from("quotes").insert({ ...v, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) });
+  return run(quoteSchema, input, async ({ doc, ...v }, { supabase }) => {
+    const extra = doc ? { doc: readDoc(doc), number: await newQuoteNumber(supabase) } : {};
+    const r = await supabase.from("quotes").insert({ ...v, ...extra, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) });
     if (!r.error) await syncDealToQuoteSent(supabase, v.deal_id, v.status);
     return r;
   });
 }
 export async function updateQuote(id: string, input: z.input<typeof quoteSchema>): Promise<Result> {
-  return run(quoteSchema.extend({ id: uuid }), { ...input, id }, async ({ id, ...v }, { supabase }) => {
-    const r = await supabase.from("quotes").update({ ...v, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) }).eq("id", id);
+  return run(quoteSchema.extend({ id: uuid }), { ...input, id }, async ({ id, doc, ...v }, { supabase }) => {
+    const extra: Record<string, unknown> = doc ? { doc: readDoc(doc) } : {};
+    if (doc) { // a quote made before numbering existed gets its number the first time it is saved with a document
+      const cur = await supabase.from("quotes").select("number").eq("id", id).single();
+      if (!cur.error && !(cur.data as { number?: string }).number) extra.number = await newQuoteNumber(supabase);
+    }
+    const r = await supabase.from("quotes").update({ ...v, ...extra, sent_on: v.sent_on ?? (v.status === "Sent" ? todayISO() : null) }).eq("id", id);
     if (!r.error) await syncDealToQuoteSent(supabase, v.deal_id, v.status);
     return r;
   });
@@ -400,4 +423,17 @@ export async function addActivity(input: z.input<typeof activitySchema>): Promis
 
 export async function deleteActivity(id: string): Promise<Result> {
   return run(uuid, id, (v, { supabase }) => supabase.from("activities").delete().eq("id", v));
+}
+
+// ---------- business details (printed on quotes) ----------
+const str = (n: number) => z.string().trim().max(n).default("");
+const businessSchema = z.object({
+  name: str(80), subtitle: str(80), legal_line: str(200), reg_no: str(60), contact_line: str(200), address: str(200),
+  vat_note: str(100), signer: str(80), prefix: z.string().trim().regex(/^[A-Za-z0-9]{1,10}$/, "Quote prefix: letters and numbers only, up to 10").default("QUO"),
+  next_number: z.coerce.number().int().min(1).max(99999).default(1001),
+  bank: str(60), account_name: str(80), account_no: str(40), account_type: str(40), branch_code: str(20), defaults: docSchema,
+});
+export async function saveBusiness(input: z.input<typeof businessSchema>): Promise<Result> {
+  return run(businessSchema, input, (v, { supabase }) =>
+    supabase.from("settings").upsert({ key: "business", value: { ...v, defaults: readDoc(v.defaults) } }));
 }

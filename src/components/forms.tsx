@@ -2,7 +2,7 @@
 import { useState } from "react";
 import {
   addActivity, addClient, addDeal, addInvoice, addTask, deleteClient, deleteDeal, deleteInvoice,
-  deleteTask, deletePayment, deleteQuote, addQuote, convertQuote, updateQuote, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
+  deleteTask, deletePayment, convertQuote, recordPayment, updateClient, updateDeal, updateInvoice, updatePayment, updateTask,
 } from "@/app/actions";
 import { MONEY_HELP, parseMoney, todayISO, fmtDate, fmtRand } from "@/lib/format";
 import {
@@ -243,37 +243,6 @@ function PaymentEditModal({ payment, onClose }: { payment: Payment; onClose: () 
         </div>
         <ErrorText error={error} />
         <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Saving…" : "Save payment"}</button>
-      </form>
-    </Modal>
-  );
-}
-
-export function QuoteModal({ quote, clients, deals, onClose }: { quote?: Quote; clients: Client[]; deals: Deal[]; onClose: () => void }) {
-  const { act, pending, error, setError } = useAct();
-  const [f, setF] = useState({
-    client_id: quote?.client_id ?? clients[0]?.id ?? "", deal_id: quote?.deal_id ?? "", label: quote?.label ?? "",
-    amount: String(quote?.amount ?? ""), status: quote?.status ?? "Draft", sent_on: quote?.sent_on ?? "", notes: quote?.notes ?? "",
-  });
-  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
-  const clientDeals = deals.filter((d) => d.client_id === f.client_id);
-  const payload = { ...f, amount: parseMoney(f.amount) ?? 0, deal_id: f.deal_id || null, sent_on: f.sent_on || null };
-  return (
-    <Modal title={quote ? "Edit quote" : "Add quote"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const amt = parseMoney(f.amount); if (amt === null || amt <= 0) return setError(MONEY_HELP); act(() => quote ? updateQuote(quote.id, payload) : addQuote(payload), onClose); }}>
-        <Field label="Client"><select className="input" required value={f.client_id} onChange={(e) => setF((p) => ({ ...p, client_id: e.target.value, deal_id: "" }))}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-        <Field label="What is it for?"><input className="input" required placeholder="e.g. 5-page website" value={f.label} onChange={(e) => set("label", e.target.value)} /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Quoted amount (R)"><MoneyInput required value={f.amount} onChange={(v) => set("amount", v)} /></Field>
-          <Field label="Status"><Select value={f.status} options={QUOTE_STATUSES} onChange={(v) => set("status", v)} /></Field>
-          <Field label="Sent on"><input className="input" type="date" value={f.sent_on} onChange={(e) => set("sent_on", e.target.value)} /></Field>
-          <Field label="Linked deal"><select className="input" value={f.deal_id} onChange={(e) => set("deal_id", e.target.value)}><option value="">— none —</option>{clientDeals.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}</select></Field>
-        </div>
-        <Field label="Notes"><textarea className="input py-2" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
-        <ErrorText error={error} />
-        <div className="flex justify-between gap-2">
-          {quote ? <ConfirmButton label="Delete" confirm="Delete this quote?" onConfirm={() => act(() => deleteQuote(quote.id), onClose)} /> : <span />}
-          <button className="btn btn-primary" disabled={pending}>Save</button>
-        </div>
       </form>
     </Modal>
   );

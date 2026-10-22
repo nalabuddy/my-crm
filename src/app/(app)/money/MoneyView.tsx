@@ -6,13 +6,14 @@ import { InvoiceModal, PaymentList, PaymentModal } from "@/components/forms";
 import { Empty, ErrorText, useAct } from "@/components/ui";
 import { fmtDate, fmtRand, todayISO } from "@/lib/format";
 import { planLines } from "@/lib/logic";
+import type { Business } from "@/lib/quotedoc";
 import type { Client, Deal, Expense, Installment, Invoice, Payment, Quote } from "@/lib/types";
 import PlanModal from "./PlanModal";
 import ExpensesPanel from "./ExpensesPanel";
 import QuotesPanel from "./QuotesPanel";
 import RevenuePanel from "./RevenuePanel";
 
-export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady, expenses, target, extrasReady, installments, plansReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean; expenses: Expense[]; target: number; extrasReady: boolean; installments: Installment[]; plansReady: boolean }) {
+export default function MoneyView({ invoices, clients, payments, me, quotes, deals, quotesReady, expenses, target, extrasReady, installments, plansReady, business, docsReady }: { invoices: Invoice[]; clients: Client[]; payments: Payment[]; me: string; quotes: Quote[]; deals: Deal[]; quotesReady: boolean; expenses: Expense[]; target: number; extrasReady: boolean; installments: Installment[]; plansReady: boolean; business: Business; docsReady: boolean }) {
   const [tab, setTab] = useState<"invoices" | "quotes" | "expenses" | "revenue">("invoices");
   const [filter, setFilter] = useState<"outstanding" | "all">("outstanding");
   const [paying, setPaying] = useState<Invoice | null>(null);
@@ -37,7 +38,7 @@ export default function MoneyView({ invoices, clients, payments, me, quotes, dea
           <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? "btn-primary" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
-      {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} />}
+      {tab === "quotes" && <QuotesPanel quotes={quotes} clients={clients} deals={deals} ready={quotesReady} business={business} docsReady={docsReady} />}
       {tab === "expenses" && <ExpensesPanel expenses={expenses} ready={extrasReady} />}
       {tab === "revenue" && <RevenuePanel payments={payments} expenses={expenses} deals={deals} target={target} extrasReady={extrasReady} clients={clients} installments={installments} invoices={invoices} />}
       {tab === "invoices" && (<>

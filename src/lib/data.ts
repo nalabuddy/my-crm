@@ -1,4 +1,5 @@
 import { getMe, requireAuth } from "./session";
+import { readBusiness, type Business } from "./quotedoc";
 import type { Activity, CallLead, Client, Deal, Expense, Installment, Invoice, Payment, Quote, Task } from "./types";
 
 /** Small two-person dataset: load everything for the screen in one go (RLS applies). */
@@ -49,4 +50,11 @@ export async function loadLeads() {
   const { supabase } = await requireAuth();
   const [me, l] = await Promise.all([getMe(), supabase.from("call_leads").select("*").order("created_at", { ascending: true })]);
   return { me, leads: (l.error ? [] : l.data) as CallLead[], ready: !l.error };
+}
+
+/** Your business details for printed quotes. `ready` is false until SQL 0006 has been run. */
+export async function loadBusiness(): Promise<{ business: Business; saved: boolean; ready: boolean }> {
+  const { supabase } = await requireAuth();
+  const r = await supabase.from("settings").select("value").eq("key", "business").maybeSingle();
+  return { business: readBusiness(r.data?.value), saved: !!r.data, ready: !r.error };
 }

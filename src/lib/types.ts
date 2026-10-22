@@ -34,6 +34,7 @@ export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export type Quote = {
   id: string; client_id: string; deal_id: string | null; label: string; amount: number; status: QuoteStatus;
   sent_on: string | null; notes: string; invoiced: boolean; created_at: string;
+  number?: string; doc?: unknown; // present once migration 0006 has been run
 };
 export type Installment = { id: string; invoice_id: string; amount: number; due_on: string; paid_before: number };
 export type Payment = { id: string; invoice_id: string; amount: number; received_on: string };
